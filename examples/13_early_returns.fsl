@@ -1,0 +1,48 @@
+MACHINE
+
+FN find_first_negative(a: i32, b: i32, c: i32): i32
+    IF a < 0
+        RETURN a
+    ENDIF
+    IF b < 0
+        RETURN b
+    ENDIF
+    IF c < 0
+        RETURN c
+    ENDIF
+    RETURN 0
+ENDFN
+
+FN search_matrix_sum(): i32
+    VAR i: i32 = 0
+    WHILE i < 10
+        VAR j: i32 = 0
+        WHILE j < 10
+            IF i * j == 42
+                RETURN i + j
+            ENDIF
+            j := j + 1
+        ENDWHILE
+        i := i + 1
+    ENDWHILE
+    RETURN -1
+ENDFN
+
+FN main(): i32
+    VAR neg: i32 = find_first_negative(10, -5, 20)
+    IF neg != -5
+        RETURN 1
+    ENDIF
+
+    VAR none_neg: i32 = find_first_negative(1, 2, 3)
+    IF none_neg != 0
+        RETURN 2
+    ENDIF
+
+    VAR target: i32 = search_matrix_sum()
+    IF target != 13
+        RETURN 3
+    ENDIF
+
+    RETURN 0
+ENDFN

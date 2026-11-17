@@ -1,0 +1,21 @@
+MACHINE
+
+FN classify(x: i32): i32
+    MATCH x
+        CASE 0
+            RETURN 100
+        CASE 1
+            RETURN 200
+        CASE 2
+            RETURN 300
+        ELSE
+            RETURN 999
+    ENDMATCH
+ENDFN
+
+FN main(): i32
+    IF classify(0) == 100 && classify(1) == 200 && classify(2) == 300 && classify(50) == 999
+        RETURN 0
+    ENDIF
+    RETURN 1
+ENDFN

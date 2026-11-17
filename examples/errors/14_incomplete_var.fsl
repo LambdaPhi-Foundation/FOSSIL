@@ -1,0 +1,3 @@
+FN bad(): i32
+    VAR x: i32 =
+ENDFN

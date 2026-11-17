@@ -1,0 +1,7 @@
+// Error: use of moved owner
+FN main(): i32
+    VAR a: own[ptr[i32]]
+    VAR b: own[ptr[i32]]
+    b := a
+    RETURN *a   // a was moved, should error
+ENDFN

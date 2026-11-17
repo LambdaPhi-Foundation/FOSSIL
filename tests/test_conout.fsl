@@ -1,0 +1,56 @@
+MODULE Conout
+    USE MACHINE::io_handles
+    USE MACHINE::win32
+
+    FN write(buf: ptr[u8], len: usize): isize
+        VAR h: ptr[u8] = _get_stdout()
+        VAR written: u32 = 0
+        VAR result: i32 = WriteConsoleA(h, buf, len as u32, &written, null)
+        IF result == 0
+            result := WriteFile(h, buf, len as u32, &written, null)
+            IF result == 0
+                RETURN -1
+            ENDIF
+        ENDIF
+        RETURN written as isize
+    ENDFN
+
+    FN write_str(s: str): isize
+        RETURN write(s.ptr, s.len)
+    ENDFN
+
+    FN writeln(buf: ptr[u8], len: usize): isize
+        VAR n: isize = write(buf, len)
+        IF n < 0
+            RETURN n
+        ENDIF
+        VAR nl: u8 = '\n' as u8
+        VAR m: isize = write(&nl, 1)
+        IF m < 0
+            RETURN m
+        ENDIF
+        RETURN n + m
+    ENDFN
+
+    FN writeln_str(s: str): isize
+        VAR n: isize = write_str(s)
+        IF n < 0
+            RETURN n
+        ENDIF
+        VAR nl: u8 = '\n' as u8
+        VAR m: isize = write(&nl, 1)
+        IF m < 0
+            RETURN m
+        ENDIF
+        RETURN n + m
+    ENDFN
+
+    FN flush(): void
+        VAR h: ptr[u8] = _get_stdout()
+        FlushFileBuffers(h)
+    ENDFN
+
+    FN handle(): ptr[u8]
+        RETURN _get_stdout()
+    ENDFN
+ENDMODULE

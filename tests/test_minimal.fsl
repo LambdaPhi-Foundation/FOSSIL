@@ -1,0 +1,15 @@
+MODULE Test
+    FN foo(): i32
+        VAR x: i32 = 10
+        IF x != 5
+            RETURN 1
+        ENDIF
+        RETURN 0
+    ENDFN
+ENDMODULE
+
+MACHINE
+FN main(): i32
+    VAR y: i32 = Test.foo()
+    RETURN y
+ENDFN

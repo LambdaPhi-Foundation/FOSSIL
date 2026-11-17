@@ -1,0 +1,25 @@
+MACHINE
+
+EXTERN FN putchar(c: i32): i32 ENDFN
+EXTERN FN puts(s: ptr[u8]): i32 ENDFN
+
+FN write_byte(port: ptr[i32], value: i32): void
+    VOLATILE *port := value
+ENDFN
+
+FN read_byte(port: ptr[i32]): i32
+    RETURN VOLATILE *port
+ENDFN
+
+FN main(): i32
+    VAR msg: ptr[u8] = "Hello from RELIC!\n"
+    puts(msg)
+
+    VAR local: i32 = 0
+    VAR port: ptr[i32] = &local
+
+    write_byte(port, 65)
+    VAR c: i32 = read_byte(port)
+
+    RETURN 0
+ENDFN

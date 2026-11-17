@@ -1,0 +1,69 @@
+; Conin - Standard Input (STDIN)
+; Provides read, scanline, read_char, read_str, handle
+
+MODULE Conin
+    USE MACHINE::io_handles
+    USE MACHINE::win32
+
+    ; Read up to len bytes from stdin
+    ; Returns number of bytes read, or -1 on error/EOF
+    FN read(buf: ptr[u8], len: usize): isize
+        VAR h = _get_stdin()
+        VAR read: u32 = 0
+        VAR result = ReadConsoleA(h, buf, len as u32, &read, null)
+        IF result == 0
+            ; Fallback for redirected input
+            result = ReadFile(h, buf, len as u32, &read, null)
+            IF result == 0
+                RETURN -1
+            ENDIF
+        ENDIF
+        RETURN read as isize
+    ENDFN
+
+    ; Read a line (up to newline or max_len-1)
+    ; Null-terminates the buffer
+    ; Returns number of characters read (excluding null), or -1 on EOF
+    FN scanline(buf: ptr[u8], max_len: usize): isize
+        VAR total: usize = 0
+        WHILE total < max_len - 1
+            VAR c = read_char()
+            IF c < 0
+                IF total == 0
+                    RETURN -1  ; EOF
+                ENDIF
+                BREAK
+            ENDIF
+            IF c == '\n' as i32
+                BREAK
+            ENDIF
+            buf[total] = c as u8
+            total += 1
+        ENDWHILE
+        IF total < max_len
+            buf[total] = 0  ; null-terminate
+        ENDIF
+        RETURN total as isize
+    ENDFN
+
+    ; Read single character
+    ; Returns character as i32, or -1 on EOF/error
+    FN read_char(): i32
+        VAR c: u8 = 0
+        VAR n = read(&c, 1)
+        IF n <= 0
+            RETURN -1
+        ENDIF
+        RETURN c as i32
+    ENDFN
+
+    ; Read string (alias for read)
+    FN read_str(buf: ptr[u8], len: usize): isize
+        RETURN read(buf, len)
+    ENDFN
+
+    ; Get raw handle for advanced use
+    FN handle(): ptr[u8]
+        RETURN _get_stdin()
+    ENDFN
+ENDMODULE

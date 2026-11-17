@@ -1,0 +1,27 @@
+MACHINE
+
+FN factorial(n: i32): i32
+    IF n <= 1
+        RETURN 1
+    ENDIF
+    RETURN n * factorial(n - 1)
+ENDFN
+
+FN main(): i32
+    VAR f5: i32 = factorial(5)
+    IF f5 != 120
+        RETURN 1
+    ENDIF
+
+    VAR f1: i32 = factorial(1)
+    IF f1 != 1
+        RETURN 2
+    ENDIF
+
+    VAR f0: i32 = factorial(0)
+    IF f0 != 1
+        RETURN 3
+    ENDIF
+
+    RETURN 0
+ENDFN

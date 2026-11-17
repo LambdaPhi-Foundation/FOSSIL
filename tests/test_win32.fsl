@@ -1,0 +1,69 @@
+; Windows API bindings (kernel32.dll) for MACHINE::IO
+; Auto-available when USE MACHINE::IO in MACHINE mode
+
+MODULE win32
+
+; Standard handle constants
+CONST STD_INPUT_HANDLE: i32 = -10
+CONST STD_OUTPUT_HANDLE: i32 = -11
+CONST STD_ERROR_HANDLE: i32 = -12
+
+; Console mode flags
+CONST ENABLE_PROCESSED_INPUT: u32 = 0x0001
+CONST ENABLE_LINE_INPUT: u32 = 0x0002
+CONST ENABLE_ECHO_INPUT: u32 = 0x0004
+CONST ENABLE_WINDOW_INPUT: u32 = 0x0008
+CONST ENABLE_MOUSE_INPUT: u32 = 0x0010
+CONST ENABLE_INSERT_MODE: u32 = 0x0020
+CONST ENABLE_QUICK_EDIT_MODE: u32 = 0x0040
+CONST ENABLE_EXTENDED_FLAGS: u32 = 0x0080
+CONST ENABLE_AUTO_POSITION: u32 = 0x0100
+CONST ENABLE_VIRTUAL_TERMINAL_INPUT: u32 = 0x0200
+
+; Windows API - Handle management
+EXTERN FN GetStdHandle(nStdHandle: i32): ptr[u8] ENDFN
+EXTERN FN GetCurrentProcess(): ptr[u8] ENDFN
+
+; Console I/O (preferred for interactive)
+EXTERN FN WriteConsoleA(
+    hConsoleOutput: ptr[u8],
+    lpBuffer: ptr[u8],
+    nNumberOfCharsToWrite: u32,
+    lpNumberOfCharsWritten: ptr[u32],
+    lpReserved: ptr[u8]
+): i32 ENDFN
+
+EXTERN FN ReadConsoleA(
+    hConsoleInput: ptr[u8],
+    lpBuffer: ptr[u8],
+    nNumberOfCharsToRead: u32,
+    lpNumberOfCharsRead: ptr[u32],
+    pInputControl: ptr[u8]
+): i32 ENDFN
+
+; File/Handle I/O (works for redirected pipes)
+EXTERN FN WriteFile(
+    hFile: ptr[u8],
+    lpBuffer: ptr[u8],
+    nNumberOfBytesToWrite: u32,
+    lpNumberOfBytesWritten: ptr[u32],
+    lpOverlapped: ptr[u8]
+): i32 ENDFN
+
+EXTERN FN ReadFile(
+    hFile: ptr[u8],
+    lpBuffer: ptr[u8],
+    nNumberOfBytesToRead: u32,
+    lpNumberOfBytesRead: ptr[u32],
+    lpOverlapped: ptr[u8]
+): i32 ENDFN
+
+EXTERN FN FlushFileBuffers(hFile: ptr[u8]): i32 ENDFN
+
+; Process control
+EXTERN FN ExitProcess(uExitCode: u32): void ENDFN
+
+; Console mode
+EXTERN FN GetConsoleMode(hConsoleHandle: ptr[u8], lpMode: ptr[u32]): i32 ENDFN
+EXTERN FN SetConsoleMode(hConsoleHandle: ptr[u8], dwMode: u32): i32 ENDFN
+ENDMODULE

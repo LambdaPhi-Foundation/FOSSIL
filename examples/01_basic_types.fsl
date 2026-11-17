@@ -1,0 +1,30 @@
+MACHINE
+
+FN add(a: i32, b: i32): i32
+    RETURN a + b
+ENDFN
+
+FN main(): i32
+    VAR x: i32 = 0
+    CONST limit: i32 = 100
+    VAR result: i32 = 0
+
+    IF limit > 50
+        result := 1
+    ELSE
+        result := 2
+    ENDIF
+
+    VAR i: i32 = 0
+    WHILE i < limit
+        i := i + 1
+    ENDWHILE
+
+    VAR v: i32 = add(20, 4)
+
+    IF v == 0
+        RETURN 1
+    ENDIF
+
+    RETURN 0
+ENDFN

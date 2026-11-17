@@ -1,0 +1,15 @@
+MACHINE
+
+ENUM Data
+    Item(i32)
+    Empty
+ENDENUM
+
+FN main(): i32
+    VAR d: Data = Data.Item(10)
+    MATCH d
+        CASE Data.Item
+            RETURN 1
+    ENDMATCH
+    RETURN 0
+ENDFN

@@ -1,0 +1,9 @@
+MACHINE
+
+FN main(): i32
+    VAR a: i32 = 10
+    ASM
+        mov rax $0
+    ENDASM
+    RETURN 0
+ENDFN

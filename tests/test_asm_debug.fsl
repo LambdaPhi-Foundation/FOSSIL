@@ -1,0 +1,15 @@
+MACHINE
+
+FN main(): i32
+    ASM
+        mov rax, `a`
+        add rax, `b`
+        mov `result`, rax
+    ENDASM
+    
+    VAR a: i32 = 10
+    VAR b: i32 = 20
+    VAR result: i32 = 0
+    
+    RETURN 0
+ENDFN

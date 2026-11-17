@@ -1,0 +1,66 @@
+; Conerr - Standard Error (STDERR)
+; Mirrors Conout but for stderr
+
+MODULE Conerr
+    USE MACHINE::io_handles
+    USE MACHINE::win32
+
+    ; Write bytes to stderr
+    ; Returns number of bytes written, or -1 on error
+    FN write(buf: ptr[u8], len: usize): isize
+        VAR h = _get_stderr()
+        VAR written: u32 = 0
+        VAR result = WriteConsoleA(h, buf, len as u32, &written, null)
+        IF result == 0
+            result = WriteFile(h, buf, len as u32, &written, null)
+            IF result == 0
+                RETURN -1
+            ENDIF
+        ENDIF
+        RETURN written as isize
+    ENDFN
+
+    ; Write string to stderr
+    FN write_str(s: str): isize
+        RETURN write(s.ptr, s.len)
+    ENDFN
+
+    ; Write bytes + newline to stderr
+    FN writeln(buf: ptr[u8], len: usize): isize
+        VAR n = write(buf, len)
+        IF n < 0
+            RETURN n
+        ENDIF
+        VAR nl: u8 = '\n' as u8
+        VAR m = write(&nl, 1)
+        IF m < 0
+            RETURN m
+        ENDIF
+        RETURN n + m
+    ENDFN
+
+    ; Write string + newline to stderr
+    FN writeln_str(s: str): isize
+        VAR n = write_str(s)
+        IF n < 0
+            RETURN n
+        ENDIF
+        VAR nl: u8 = '\n' as u8
+        VAR m = write(&nl, 1)
+        IF m < 0
+            RETURN m
+        ENDIF
+        RETURN n + m
+    ENDFN
+
+    ; Flush stderr
+    FN flush(): void
+        VAR h = _get_stderr()
+        FlushFileBuffers(h)
+    ENDFN
+
+    ; Get raw handle for advanced use
+    FN handle(): ptr[u8]
+        RETURN _get_stderr()
+    ENDFN
+ENDMODULE

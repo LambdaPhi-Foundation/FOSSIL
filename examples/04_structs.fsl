@@ -1,0 +1,37 @@
+MACHINE
+
+STRUCT Vector3
+    x: i32
+    y: i32
+    z: i32
+ENDSTRUCT
+
+FN scale_vector(v: ptr[Vector3], factor: i32): void
+    v.x := v.x * factor
+    v.y := v.y * factor
+    v.z := v.z * factor
+ENDFN
+
+FN sum_components(v: ptr[Vector3]): i32
+    RETURN v.x + v.y + v.z
+ENDFN
+
+FN main(): i32
+    VAR vec: Vector3
+    VAR p: ptr[Vector3] = &vec
+
+    p.x := 10
+    p.y := 20
+    p.z := 30
+
+    scale_vector(p, 2)
+
+    VAR sum: i32 = sum_components(p)
+    // 20 + 40 + 60 = 120
+
+    IF sum == 120
+        RETURN 0
+    ENDIF
+
+    RETURN sum
+ENDFN

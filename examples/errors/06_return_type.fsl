@@ -1,0 +1,4 @@
+// Error: return type mismatch
+FN main(): i32
+    RETURN "not an int"
+ENDFN

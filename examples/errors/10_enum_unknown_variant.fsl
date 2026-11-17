@@ -1,0 +1,11 @@
+MACHINE
+
+ENUM State
+    Idle
+    Running
+ENDENUM
+
+FN main(): i32
+    VAR s: State = State.Stopped
+    RETURN 0
+ENDFN

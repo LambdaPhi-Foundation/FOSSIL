@@ -1,0 +1,38 @@
+; MACHINE::IO - Top-level I/O module
+; Provides Conout, Conin, Conerr submodules and convenience functions
+
+MODULE IO
+    USE MACHINE::Conout
+    USE MACHINE::Conin
+    USE MACHINE::Conerr
+    USE MACHINE::win32
+
+    ; Re-export submodules for direct access
+    ; USE MACHINE::IO; IO.Conout.write(...)
+
+    ; Convenience functions
+    FN print(s: str): isize
+        RETURN Conout.write_str(s)
+    ENDFN
+
+    FN println(s: str): isize
+        RETURN Conout.writeln_str(s)
+    ENDFN
+
+    FN eprint(s: str): isize
+        RETURN Conerr.write_str(s)
+    ENDFN
+
+    FN eprintln(s: str): isize
+        RETURN Conerr.writeln_str(s)
+    ENDFN
+
+    FN read_line(buf: ptr[u8], len: usize): isize
+        RETURN Conin.scanline(buf, len)
+    ENDFN
+
+    FN exit(code: i32): void
+        ExitProcess(code as u32)
+        UNREACHABLE
+    ENDFN
+ENDMODULE

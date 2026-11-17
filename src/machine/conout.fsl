@@ -1,0 +1,69 @@
+; Conout - Standard Output (STDOUT)
+; Provides write, writeln, write_str, writeln_str, flush, handle
+
+MODULE Conout
+    USE MACHINE::io_handles
+    USE MACHINE::win32
+
+    ; Write bytes to stdout
+    ; Returns number of bytes written, or -1 on error
+    FN write(buf: ptr[u8], len: usize): isize
+        VAR h = _get_stdout()
+        VAR written: u32 = 0
+        ; Try WriteConsoleA first (handles Unicode, colors)
+        VAR result = WriteConsoleA(h, buf, len as u32, &written, null)
+        IF result != 0
+            RETURN written as isize
+        ENDIF
+        ; Fallback to WriteFile for redirected output
+        result := WriteFile(h, buf, len as u32, &written, null)
+        IF result == 0
+            RETURN -1
+        ENDIF
+        RETURN written as isize
+    ENDFN
+
+    ; Write string to stdout
+    FN write_str(s: str): isize
+        RETURN write(s.ptr, s.len)
+    ENDFN
+
+    ; Write bytes + newline
+    FN writeln(buf: ptr[u8], len: usize): isize
+        VAR n = write(buf, len)
+        IF n < 0
+            RETURN n
+        ENDIF
+        VAR nl: u8 = '\n' as u8
+        VAR m = write(&nl, 1)
+        IF m < 0
+            RETURN m
+        ENDIF
+        RETURN n + m
+    ENDFN
+
+    ; Write string + newline
+    FN writeln_str(s: str): isize
+        VAR n = write_str(s)
+        IF n < 0
+            RETURN n
+        ENDIF
+        VAR nl: u8 = '\n' as u8
+        VAR m = write(&nl, 1)
+        IF m < 0
+            RETURN m
+        ENDIF
+        RETURN n + m
+    ENDFN
+
+    ; Flush stdout
+    FN flush(): void
+        VAR h = _get_stdout()
+        FlushFileBuffers(h)
+    ENDFN
+
+    ; Get raw handle for advanced use
+    FN handle(): ptr[u8]
+        RETURN _get_stdout()
+    ENDFN
+ENDMODULE

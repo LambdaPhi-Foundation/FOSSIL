@@ -1,0 +1,9 @@
+MACHINE
+
+USE MACHINE::IO
+
+FN main(): i32
+    IO.println("Hello from MACHINE::IO!")
+    IO.eprintln("This goes to stderr")
+    IO.exit(0)
+ENDFN

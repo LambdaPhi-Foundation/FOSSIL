@@ -1,0 +1,19 @@
+MACHINE
+
+FN fib(n: i32): i32
+    IF n <= 0
+        RETURN 0
+    ENDIF
+    IF n == 1
+        RETURN 1
+    ENDIF
+    RETURN fib(n - 1) + fib(n - 2)
+ENDFN
+
+FN main(): i32
+    VAR res: i32 = fib(8)
+    IF res == 21
+        RETURN 0
+    ENDIF
+    RETURN 1
+ENDFN

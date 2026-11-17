@@ -1,0 +1,8 @@
+FN main(): i32 
+    ASM
+        mov rax, `a`
+        add rax, `b`
+        mov `total`, rax
+    ENDASM
+ENDFN
+

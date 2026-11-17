@@ -1,0 +1,35 @@
+MACHINE
+
+ENUM ReadResult
+    Success(i32)
+    EndOfFile
+    Failure(i32)
+ENDENUM
+
+FN process(r: ReadResult): i32
+    MATCH r
+        CASE ReadResult.Success(val)
+            RETURN val * 2
+        CASE ReadResult.Failure(code)
+            RETURN code
+        CASE ReadResult.EndOfFile
+            RETURN 99
+    ENDMATCH
+    RETURN -1
+ENDFN
+
+FN main(): i32
+    VAR r1: ReadResult = ReadResult.Success(21)
+    VAR r2: ReadResult = ReadResult.Failure(7)
+    VAR r3: ReadResult = ReadResult.EndOfFile
+
+    VAR a: i32 = process(r1)
+    VAR b: i32 = process(r2)
+    VAR c: i32 = process(r3)
+
+    IF a == 42 && b == 7 && c == 99
+        RETURN 0
+    ENDIF
+
+    RETURN 1
+ENDFN

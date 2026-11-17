@@ -1,0 +1,33 @@
+; Handle caching for standard I/O
+; Auto-available when USE MACHINE::IO in MACHINE mode
+
+MODULE io_handles
+
+USE MACHINE::win32
+
+; Cached handles (initialized on first use)
+VAR _stdout_handle: ptr[u8] = null
+VAR _stderr_handle: ptr[u8] = null
+VAR _stdin_handle: ptr[u8] = null
+
+FN _get_stdout(): ptr[u8]
+    IF _stdout_handle == null
+        _stdout_handle = GetStdHandle(STD_OUTPUT_HANDLE)
+    ENDIF
+    RETURN _stdout_handle
+ENDFN
+
+FN _get_stderr(): ptr[u8]
+    IF _stderr_handle == null
+        _stderr_handle = GetStdHandle(STD_ERROR_HANDLE)
+    ENDIF
+    RETURN _stderr_handle
+ENDFN
+
+FN _get_stdin(): ptr[u8]
+    IF _stdin_handle == null
+        _stdin_handle = GetStdHandle(STD_INPUT_HANDLE)
+    ENDIF
+    RETURN _stdin_handle
+ENDFN
+ENDMODULE

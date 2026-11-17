@@ -1,0 +1,10 @@
+MACHINE
+
+FN main(): i32
+    VAR a: i32 = 10
+    ASM
+        mov rax, `a`
+        CLobbers("rax")
+    ENDASM
+    RETURN 0
+ENDFN

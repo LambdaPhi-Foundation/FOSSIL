@@ -1,0 +1,5 @@
+MACHINE
+
+FN main(): bool
+    RETURN TRUE
+ENDFN

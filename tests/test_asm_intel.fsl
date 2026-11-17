@@ -1,0 +1,8 @@
+MACHINE
+
+FN main(): i32
+    ASM
+        nop
+    ENDASM Flags("intel")
+    RETURN 0
+ENDFN

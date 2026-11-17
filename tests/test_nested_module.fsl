@@ -1,0 +1,18 @@
+MODULE Outer
+    MODULE Inner
+        FN bar(): i32
+            RETURN 99
+        ENDFN
+    ENDMODULE
+
+    FN foo(): i32
+        RETURN 42
+    ENDFN
+ENDMODULE
+
+MACHINE
+
+FN main(): i32
+    VAR x: i32 = 42
+    RETURN x
+ENDFN

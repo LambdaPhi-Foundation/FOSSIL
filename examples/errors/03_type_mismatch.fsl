@@ -1,0 +1,5 @@
+// Error: type mismatch - assigning string to i32
+FN main(): i32
+    VAR x: i32 = "hello"
+    RETURN x
+ENDFN

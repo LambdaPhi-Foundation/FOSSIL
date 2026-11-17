@@ -1,0 +1,6 @@
+MACHINE
+
+FN main(): i32
+    VAR x: i32 = 42
+    RETURN x
+ENDFN

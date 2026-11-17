@@ -1,0 +1,7 @@
+// comment line
+MACHINE // inline comment
+
+FN main(): i32
+    VAR x: i32 = 42 // init value
+    RETURN x
+ENDFN

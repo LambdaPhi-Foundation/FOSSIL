@@ -1,0 +1,6 @@
+USE MACHINE::IO
+
+FN MAIN() I32
+    ASM nop ENDASM
+    RET 0
+ENDFN

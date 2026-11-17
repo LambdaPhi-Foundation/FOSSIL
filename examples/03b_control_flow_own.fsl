@@ -1,0 +1,15 @@
+NO_MACHINE
+
+ENUM ReadResult
+    Success(i32)
+    EndOfFile
+    Failure(i32)
+ENDENUM
+
+FN process(p: own[ptr[i32]]): void
+    VAR sum: i32 = 0
+    FOR i = 0 TO 10
+        sum := sum + i
+    ENDFOR
+    RETURN
+ENDFN

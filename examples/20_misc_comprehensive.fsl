@@ -1,0 +1,40 @@
+MACHINE
+
+STRUCT Point
+    x: i32
+    y: i32
+ENDSTRUCT
+
+FN divide(a: i32, b: i32): (i32, bool)
+    IF b == 0
+        RETURN 0, FALSE
+    ENDIF
+    RETURN a / b, TRUE
+ENDFN
+
+FN main(): i32
+    VAR p: ptr[Point]
+    VAR result: i32 = 0
+    CONST limit: i32 = 100
+
+    IF limit > 50
+        result := 1
+    ELSE
+        result := 2
+    ENDIF
+
+    VAR i: i32 = 0
+    WHILE i < limit
+        i := i + 1
+    ENDWHILE
+
+    VAR v: i32 = 0
+    VAR ok: bool = FALSE
+    v, ok := divide(20, 4)
+
+    IF ok == FALSE
+        RETURN 1
+    ENDIF
+
+    RETURN 0
+ENDFN

@@ -1,0 +1,1 @@
+D:\Programs\carnax\target\debug\carnax.exe: D:\Programs\carnax\src\ast.rs D:\Programs\carnax\src\codegen.rs D:\Programs\carnax\src\driver.rs D:\Programs\carnax\src\lexer.rs D:\Programs\carnax\src\lib.rs D:\Programs\carnax\src\main.rs D:\Programs\carnax\src\module_loader.rs D:\Programs\carnax\src\parser.rs D:\Programs\carnax\src\semantic.rs D:\Programs\carnax\src\token.rs

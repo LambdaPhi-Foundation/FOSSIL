@@ -1,0 +1,54 @@
+MACHINE
+
+FN main(): i32
+    VAR a: i32 = 12
+    VAR b: i32 = 10
+
+    // a & b = 8
+    IF (a & b) != 8
+        RETURN 1
+    ENDIF
+
+    // a | b = 14
+    IF (a | b) != 14
+        RETURN 2
+    ENDIF
+
+    // a ^ b = 6
+    IF (a ^ b) != 6
+        RETURN 3
+    ENDIF
+
+    // a << 2 = 48
+    IF (a << 2) != 48
+        RETURN 4
+    ENDIF
+
+    // a >> 1 = 6
+    IF (a >> 1) != 6
+        RETURN 5
+    ENDIF
+
+    // ~z = -1 when z = 0
+    VAR z: i32 = 0
+    IF ~z != -1
+        RETURN 6
+    ENDIF
+
+    VAR t: bool = TRUE
+    VAR f: bool = FALSE
+
+    IF !t
+        RETURN 7
+    ENDIF
+
+    IF !(t || f)
+        RETURN 8
+    ENDIF
+
+    IF t && f
+        RETURN 9
+    ENDIF
+
+    RETURN 0
+ENDFN

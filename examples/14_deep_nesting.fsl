@@ -1,0 +1,23 @@
+MACHINE
+
+FN compute(x: i32): i32
+    RETURN (x * 2 + 1) * (x - 3) / (x + 1)
+ENDFN
+
+FN main(): i32
+    VAR c5: i32 = compute(5)
+    IF c5 != 3
+        RETURN 1
+    ENDIF
+
+    VAR a: i32 = 10
+    VAR b: i32 = 20
+    VAR c: i32 = 30
+    VAR d: i32 = 40
+
+    IF a + b >= c && c + 10 <= d
+        RETURN 0
+    ENDIF
+
+    RETURN 2
+ENDFN

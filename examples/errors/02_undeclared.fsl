@@ -1,0 +1,4 @@
+// Error: undeclared variable
+FN main(): i32
+    RETURN y
+ENDFN

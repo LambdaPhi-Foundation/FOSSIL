@@ -1,0 +1,6 @@
+MACHINE
+
+FN main(): i32
+    ASM nop ENDASM
+    RETURN 0
+ENDFN

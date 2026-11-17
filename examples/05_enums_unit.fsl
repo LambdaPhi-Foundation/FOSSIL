@@ -1,0 +1,39 @@
+MACHINE
+
+ENUM Status
+    Pending
+    Active
+    Finished
+ENDENUM
+
+FN eval_status(s: Status): i32
+    MATCH s
+        CASE Status.Pending
+            RETURN 10
+        CASE Status.Active
+            RETURN 20
+        CASE Status.Finished
+            RETURN 30
+    ENDMATCH
+    RETURN 0
+ENDFN
+
+FN main(): i32
+    VAR s1: Status = Status.Pending
+    VAR s2: Status = Status.Active
+    VAR s3: Status = Status.Finished
+
+    IF s1 != Status.Pending
+        RETURN 1
+    ENDIF
+
+    VAR v1: i32 = eval_status(s1)
+    VAR v2: i32 = eval_status(s2)
+    VAR v3: i32 = eval_status(s3)
+
+    IF v1 + v2 + v3 == 60
+        RETURN 0
+    ENDIF
+
+    RETURN 2
+ENDFN

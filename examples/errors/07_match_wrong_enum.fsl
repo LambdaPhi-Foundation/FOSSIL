@@ -1,0 +1,18 @@
+MACHINE
+
+ENUM StateA
+    Alpha
+ENDENUM
+
+ENUM StateB
+    Beta
+ENDENUM
+
+FN main(): i32
+    VAR a: StateA = StateA.Alpha
+    MATCH a
+        CASE StateB.Beta
+            RETURN 1
+    ENDMATCH
+    RETURN 0
+ENDFN

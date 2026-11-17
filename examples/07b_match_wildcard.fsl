@@ -1,0 +1,26 @@
+MACHINE
+
+ENUM Color
+    Red
+    Green
+    Blue
+ENDENUM
+
+FN is_red(c: Color): bool
+    MATCH c
+        CASE Color.Red
+            RETURN TRUE
+        CASE _
+            RETURN FALSE
+    ENDMATCH
+ENDFN
+
+FN main(): i32
+    VAR c1: Color = Color.Red
+    VAR c2: Color = Color.Blue
+
+    IF is_red(c1) == TRUE && is_red(c2) == FALSE
+        RETURN 0
+    ENDIF
+    RETURN 1
+ENDFN

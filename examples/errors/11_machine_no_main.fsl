@@ -1,0 +1,5 @@
+MACHINE
+
+FN foo(): i32
+    RETURN 0
+ENDFN

@@ -1,0 +1,15 @@
+MACHINE
+
+ENUM Kind
+    First
+    Second
+ENDENUM
+
+FN main(): i32
+    VAR k: Kind = Kind.First
+    MATCH k
+        CASE 42
+            RETURN 1
+    ENDMATCH
+    RETURN 0
+ENDFN

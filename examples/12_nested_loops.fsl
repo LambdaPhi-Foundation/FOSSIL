@@ -1,0 +1,23 @@
+MACHINE
+
+FN main(): i32
+    VAR total: i32 = 0
+    VAR i: i32 = 0
+    WHILE i < 5
+        VAR j: i32 = 0
+        FOR j = 0 TO 3
+            VAR k: i32 = 0
+            WHILE k < 2
+                total := total + 1
+                k := k + 1
+            ENDWHILE
+        ENDFOR
+        i := i + 1
+    ENDWHILE
+
+    IF total == 40
+        RETURN 0
+    ENDIF
+
+    RETURN total
+ENDFN

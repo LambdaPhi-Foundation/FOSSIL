@@ -1,0 +1,45 @@
+MACHINE
+
+FN stats(a: i32, b: i32, c: i32): (i32, i32, i32)
+    VAR min: i32 = a
+    IF b < min
+        min := b
+    ENDIF
+    IF c < min
+        min := c
+    ENDIF
+
+    VAR max: i32 = a
+    IF b > max
+        max := b
+    ENDIF
+    IF c > max
+        max := c
+    ENDIF
+
+    VAR sum: i32 = a + b + c
+
+    RETURN min, max, sum
+ENDFN
+
+FN main(): i32
+    VAR lo: i32 = 0
+    VAR hi: i32 = 0
+    VAR total: i32 = 0
+
+    lo, hi, total := stats(15, 3, 42)
+
+    IF lo != 3
+        RETURN 1
+    ENDIF
+
+    IF hi != 42
+        RETURN 2
+    ENDIF
+
+    IF total != 60
+        RETURN 3
+    ENDIF
+
+    RETURN 0
+ENDFN

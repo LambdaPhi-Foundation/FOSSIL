@@ -1,0 +1,30 @@
+MACHINE
+
+ENUM Direction
+    North
+    South
+    East
+    West
+ENDENUM
+
+FN dir_to_int(d: Direction): i32
+    MATCH d
+        CASE North
+            RETURN 1
+        CASE South
+            RETURN 2
+        CASE East
+            RETURN 3
+        CASE West
+            RETURN 4
+    ENDMATCH
+    RETURN 0
+ENDFN
+
+FN main(): i32
+    VAR d: Direction = South
+    IF dir_to_int(d) == 2
+        RETURN 0
+    ENDIF
+    RETURN 1
+ENDFN

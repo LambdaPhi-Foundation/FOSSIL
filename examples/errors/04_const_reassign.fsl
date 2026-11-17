@@ -1,0 +1,6 @@
+// Error: const reassignment
+FN main(): i32
+    CONST x: i32 = 10
+    x := 20
+    RETURN x
+ENDFN

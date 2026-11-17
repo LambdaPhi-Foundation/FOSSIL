@@ -1,0 +1,13 @@
+MODULE Test
+    USE MACHINE::win32
+    FN foo(): i32
+        VAR x: i32 = 10
+        RETURN x
+    ENDFN
+ENDMODULE
+
+MACHINE
+FN main(): i32
+    VAR y: i32 = Test.foo()
+    RETURN y
+ENDFN
