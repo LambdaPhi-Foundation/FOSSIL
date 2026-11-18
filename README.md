@@ -18,6 +18,8 @@ A compiler for the **FOSSIL** programming language (`.fsl` files) written in Rus
 - `MACHINE`/`NO_MACHINE` modes for bare-metal vs hosted
 - Module system with qualified imports
 - Compile-time module loading from source files
+- **Trait system** with dynamic dispatch via vtables
+- **Tagged unions** as primary error handling mechanism (no `Result`/`Option`)
 
 ## Quick Start
 
@@ -151,7 +153,7 @@ ENDASM
 ; With constraints
 ASM
     add `a`, `b`
-CLobbers("rax")
+CLOBBERS("rax")
 ENDASM
 ```
 
@@ -160,6 +162,42 @@ ENDASM
 CONST msg: str = "Hello, World!"
 VAR ptr: ptr[u8] = msg.ptr
 VAR len: usize = msg.len
+```
+
+### Traits & Dynamic Dispatch
+```fsl
+TRAIT Write
+    FN write(self: ptr[void], buf: slice[u8]): [u64, Error]
+    FN flush(self: ptr[void]): [void, Error]
+ENDTRAIT
+
+IMPL Write FOR MyWriter
+    FN write(self: ptr[void], buf: slice[u8]): [u64, Error]
+        RETURN buf.len
+    ENDFN
+ENDIMPL
+
+FN write_hello(w: ptr[Write]): i64
+    RETURN w.write("Hello")
+ENDFN
+```
+
+### Tagged Unions for Error Handling
+```fsl
+; No Result/Option types - use tagged unions directly
+FN divide(a: i32, b: i32): [i32, Error]
+    IF b == 0
+        RETURN Error { kind: ErrorKind.InvalidInput, message: "div by zero" }
+    ENDIF
+    RETURN a / b
+ENDFN
+
+FN main(): i32
+    MATCH divide(10, 0)
+        CASE v: i32 => RETURN v
+        CASE _ => RETURN 1
+    ENDMATCH
+ENDFN
 ```
 
 ## Built-in MACHINE Modules
@@ -246,10 +284,37 @@ carnax/
 │       ├── conout.fsl
 │       ├── conin.fsl
 │       └── conerr.fsl
+├── core/                 # CORE freestanding modules
+│   ├── mod.fsl
+│   ├── mem.fsl
+│   ├── slice.fsl
+│   ├── io.fsl
+│   ├── fmt.fsl
+│   ├── err.fsl
+│   ├── panic.fsl
+│   ├── alloc.fsl
+│   └── atomic.fsl
 ├── examples/             # Example programs
 ├── tests/                # Test files
 ├── target/               # Build output
-└── Cargo.toml
+├── doc/
+│   └── architecture/     # Architecture documentation
+│       ├── 00_overview.md
+│       ├── 01_phase1_foundation.md
+│       ├── 02_phase2_core_modules.md
+│       ├── 03_phase3_traits.md
+│       ├── 04_phase4_io_fmt_panic_alloc.md
+│       ├── 05_phase5_atomics.md
+│       ├── 06_phase6_machine_refactor.md
+│       ├── 07_phase7_compiler_changes.md
+│       └── 08_phase8_testing_integration.md
+├── examples/             # Example programs
+├── tests/                # Test files
+├── target/               # Build output
+├── Cargo.toml
+├── PHASES.md             # Phase implementation summary
+├── TEETHANDCLAW.md       # TeethAndClaw IR design
+└── AGENTS.md             # Agent instructions
 ```
 
 ## Compiler Architecture
@@ -280,6 +345,20 @@ carnax/
 ┌─────────────┐
 │   Clang     │  → Native binary (.exe / ELF)
 └─────────────┘
+```
+
+## Pipeline with CORE Layer
+
+```
+Source (.fsl) → Lexer → Parser → AST → Semantic → Typed AST
+                                    ↓
+                              TAC Lowering → TeethAndClaw IR (future)
+                                    ↓
+                              TAC Optimizer (optional)
+                                    ↓
+                              TAC → LLVM IR Translator
+                                    ↓
+                                  Clang → Binary
 ```
 
 ## Examples
@@ -325,14 +404,151 @@ FN main(): i32
 ENDFN
 ```
 
-## Known Limitations
+### Tagged Union Error Handling
+```fsl
+FN divide(a: i32, b: i32): [i32, Error]
+    IF b == 0
+        RETURN Error { kind: ErrorKind.InvalidInput, message: "div by zero" }
+    ENDIF
+    RETURN a / b
+ENDFN
 
-1. **Module System**: Codegen module loader has parser bug with nested IF statements in machine modules
-2. **Type System**: `usize`/`isize` vs `i32`/`i64` conversions need refinement
-3. **String Type**: `str` vs `string` distinction needs standardization
-4. **Platform Support**: Currently Windows-focused (kernel32.dll); Linux/macOS need `MACHINE::linux`/`MACHINE::macos` modules
+FN main(): i32
+    MATCH divide(10, 0)
+        CASE v: i32 => RETURN v
+        CASE _ => RETURN 1
+    ENDMATCH
+ENDFN
+```
 
-## Development
+### Dynamic Dispatch
+```fsl
+TRAIT Write
+    FN write(self: ptr[void], buf: slice[u8]): [u64, Error]
+    FN flush(self: ptr[void]): [void, Error]
+ENDTRAIT
+
+STRUCT BufferWriter
+    data: [u8; 256]
+    len: u64
+ENDSTRUCT
+
+IMPL Write FOR BufferWriter
+    FN write(self: ptr[void], buf: slice[u8]): [u64, Error]
+        RETURN buf.len as i64
+    ENDFN
+    FN flush(self: ptr[void]): [i64, Error]
+        RETURN 0
+    ENDFN
+ENDIMPL
+```
+
+## CORE Layer Architecture
+
+The **CORE** layer provides freestanding primitives independent of platform:
+
+| Module | Purpose |
+|--------|---------|
+| `core.mem` | Memory intrinsics (`memcpy`, `memset`, etc.) |
+| `core.slice` | `slice[T]`, `Str` fat pointer types |
+| `core.err` | `Error`, `ErrorKind`, tagged union helpers |
+| `core.io` | `Write` trait, `NullWriter`, stdio macros |
+| `core.fmt` | `Format` trait, formatting intrinsics |
+| `core.panic` | `panic!`, `assert!`, platform abort |
+| `core.alloc` | `Allocator` trait, global registry |
+| `core.atomic` | Atomic operations (optional) |
+
+## MACHINE Layer Architecture
+
+The **MACHINE** layer provides platform-specific implementations of CORE traits:
+
+| Module | Purpose |
+|--------|---------|
+| `machine.core` | Re-exports all CORE modules |
+| `machine.win32` | Raw Windows API bindings |
+| `machine.alloc` | libc allocator implementation |
+| `machine.io` | `Write` impl for console handles |
+| `machine.thread` | Threading primitives |
+| `machine.time` | High-resolution timers |
+| `machine.file` | File I/O (implements `Read`/`Write`) |
+| `machine.process` | Process control |
+
+## Compiler Architecture
+
+```
+┌─────────────┐
+│   Source    │
+│  (.fsl)     │
+└──────┬──────┘
+       ▼
+┌─────────────┐
+│   Lexer     │  → Tokens
+└──────┬──────┘
+       ▼
+┌─────────────┐
+│   Parser    │  → AST
+└──────┬──────┘
+       ▼
+┌─────────────┐
+│  Semantic   │  → Type checking, ownership, name resolution
+│  Analyzer   │
+└──────┬──────┘
+       ▼
+┌─────────────┐
+│  Codegen    │  → LLVM IR (text)
+└──────┬──────┘
+       ▼
+┌─────────────┐
+│   Clang     │  → Native binary (.exe / ELF)
+└─────────────┘
+```
+
+## Pipeline with CORE Layer
+
+```
+Source (.fsl) → Lexer → Parser → AST → Semantic → Typed AST
+                                    ↓
+                              TAC Lowering → TeethAndClaw IR (future)
+                                    ↓
+                              TAC Optimizer (optional)
+                                    ↓
+                              TAC → LLVM IR Translator
+                                    ↓
+                                  Clang → Binary
+```
+
+## Compiler Architecture Details
+
+### Module Loading
+- Semantic analyzer loads modules during declaration collection
+- Codegen loads modules during IR emission
+- Both use `module_loader.rs` to parse `src/machine/*.fsl` and `src/core/*.fsl` files
+- Modules are cached after first load
+
+### Name Mangling
+- Module functions: `MACHINE.Conout.write_str` → `MACHINE.Conout.write_str` in LLVM IR
+- Qualified calls resolved via `imported_modules` map
+- Trait methods: mangled with trait name + method name
+
+### Ownership Checking
+- Move detection on assignment from owned identifiers
+- Scope exit checks for leaked owners
+- Branch merging for moved state (conservative)
+
+### Dynamic Dispatch
+- Trait objects are fat pointers: `{ i8*, %vtable.Trait* }`
+- VTables generated per impl: `{ method1_ptr, method2_ptr, ... }`
+- Method dispatch via vtable index lookup
+- LLVM `extractvalue` + `call` for dispatch
+
+### LLVM IR Generation
+- Text-based IR emission (not using LLVM APIs)
+- Structs: `%struct.Name = type { ... }`
+- Enums: `%enum.Name = type { i32, payload }`
+- Trait objects: `{ i8*, %vtable.Trait* }`
+- Functions emitted with proper signatures
+
+## Testing
 
 ### Run Tests
 ```bash
@@ -351,6 +567,36 @@ cargo build
 ./target/debug/carnax --help
 ```
 
+## Known Limitations
+
+1. **Module System**: Codegen module loader has parser bug with nested IF statements in machine modules
+2. **Type System**: `usize`/`isize` vs `i32`/`i64` conversions need refinement
+3. **String Type**: `str` vs `string` distinction needs standardization
+4. **Platform Support**: Currently Windows-focused (kernel32.dll); Linux/macOS need `MACHINE::linux`/`MACHINE::macos` modules
+5. **Array Parser Bug**: Pre-existing bug with array variable declarations (line 11 of `examples/08_arrays.fsl`)
+
+## Development
+
+### Phase Status
+
+| Phase | Status | Description |
+|-------|--------|-------------|
+| 1 | ✅ Complete | CORE module structure + module loader |
+| 2 | ✅ Complete | CORE modules (mem, slice, err, io, fmt, panic, alloc, atomic) |
+| 3 | ✅ Complete | Trait system basic implementation |
+| 4 | ✅ Complete | Dynamic dispatch (vtables, trait objects) |
+| 5 | 📋 Planned | CORE trait implementations in MACHINE |
+| 6 | 📋 Planned | MACHINE refactoring on CORE |
+| 7 | 📋 Planned | Result/Option replacement (complete) |
+
+### Upcoming Work
+- [ ] Phase 5: CORE trait implementations in MACHINE (Write, Read, Allocator)
+- [ ] Phase 6: MACHINE refactoring on CORE
+- [ ] Platform support: Linux/macOS MACHINE modules
+- [ ] TeethAndClaw IR implementation
+- [ ] Pattern matching on Result variants
+- [ ] `try!` / `?` operator
+
 ## License
 
 MIT License - see LICENSE file for details.
@@ -361,27 +607,5 @@ MIT License - see LICENSE file for details.
 2. Create a feature branch
 3. Make your changes
 4. Run `cargo clippy` and `cargo fmt`
-5. Submit a pull request
-
-## Architecture Notes
-
-### Module Loading
-- Semantic analyzer loads modules during declaration collection
-- Codegen loads modules during IR emission
-- Both use `module_loader.rs` to parse `src/machine/*.fsl` files
-- Modules are cached after first load
-
-### Name Mangling
-- Module functions: `MACHINE.Conout.write_str` → `MACHINE.Conout.write_str` in LLVM IR
-- Qualified calls resolved via `imported_modules` map
-
-### Ownership Checking
-- Move detection on assignment from owned identifiers
-- Scope exit checks for leaked owners
-- Branch merging for moved state (conservative)
-
-### LLVM IR Generation
-- Text-based IR emission (not using LLVM APIs)
-- Structs: `%struct.Name = type { ... }`
-- Enums: `%enum.Name = type { i32, payload }`
-- Functions emitted with proper signatures
+5. Run `cargo test`
+6. Submit a pull request
