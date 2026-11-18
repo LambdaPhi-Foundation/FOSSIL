@@ -1,0 +1,18 @@
+; CORE.mem — Memory operations as compiler intrinsics
+; Lowered to LLVM intrinsics: memcpy, memset, memmove, memcmp
+
+MODULE mem
+
+    ; Copy n bytes from src to dest (non-overlapping)
+    EXTERN FN memcpy(dest: ptr[u8], src: ptr[u8], n: u64): ptr[u8] ENDFN
+
+    ; Copy n bytes (handles overlapping)
+    EXTERN FN memmove(dest: ptr[u8], src: ptr[u8], n: u64): ptr[u8] ENDFN
+
+    ; Set n bytes to value c
+    EXTERN FN memset(dest: ptr[u8], c: i8, n: u64): ptr[u8] ENDFN
+
+    ; Compare n bytes, return <0, 0, >0
+    EXTERN FN memcmp(a: ptr[u8], b: ptr[u8], n: u64): i32 ENDFN
+
+ENDMODULE

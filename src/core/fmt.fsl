@@ -1,0 +1,183 @@
+; CORE.fmt — Allocation-Free Formatting
+; Uses tagged unions directly: [usize, Error] for fallible, [T, void] for optional
+
+MODULE fmt
+    USE CORE.slice
+    USE CORE.io
+    USE CORE.err
+
+    ; --- Format Specification (compile-time) ---
+
+    STRUCT FormatSpec
+        width: usize
+        precision: [usize, void]  ; None = _
+        fill: u8
+        align: Align
+        sign: Sign
+        base: Base
+        uppercase: bool
+    ENDSTRUCT
+
+    ENUM Align { Left, Right, Center }
+    ENUM Sign { None, Plus, Minus }
+    ENUM Base { Bin, Oct, Dec, Hex }
+
+    ; --- Format Trait ---
+
+    TRAIT Format
+        FN fmt(self: ptr[void], writer: ptr[Write], spec: FormatSpec): [usize, Error]
+    ENDTRAIT
+
+    ; --- Format String Parsing (macro) ---
+
+    MACRO format(writer: ptr[Write], fmt: str, args: ...): [usize, Error]
+        ; Compile-time: parse fmt string like "{} {}"
+        ; Generates: arg0.fmt(writer, spec0); arg1.fmt(writer, spec1); ...
+    ENDMACRO
+
+    MACRO writeln(writer: ptr[Write], fmt: str, args: ...): [usize, Error]
+        VAR res = format(writer, fmt, args...)
+        MATCH res
+            CASE n: usize => writer.write_str("\n"); RETURN n
+            CASE _ => RETURN _
+        ENDMATCH
+    ENDMACRO
+
+    ; --- Built-in Implementations ---
+
+    IMPL Format FOR i8
+        FN fmt(self: ptr[void], w: ptr[Write], spec: FormatSpec): [usize, Error]
+            VAR buf: [u8; 16]
+            VAR len = int_to_str(*self, buf.ptr, spec)
+            RETURN w.write(slice { ptr: buf.ptr, len })
+        ENDFN
+    ENDIMPL
+
+    IMPL Format FOR u8
+        FN fmt(self: ptr[void], w: ptr[Write], spec: FormatSpec): [usize, Error]
+            VAR buf: [u8; 16]
+            VAR len = uint_to_str(*self, buf.ptr, spec)
+            RETURN w.write(slice { ptr: buf.ptr, len })
+        ENDFN
+    ENDIMPL
+
+    IMPL Format FOR i16
+        FN fmt(self: ptr[void], w: ptr[Write], spec: FormatSpec): [usize, Error]
+            VAR buf: [u8; 16]
+            VAR len = int_to_str(*self, buf.ptr, spec)
+            RETURN w.write(slice { ptr: buf.ptr, len })
+        ENDFN
+    ENDIMPL
+
+    IMPL Format FOR u16
+        FN fmt(self: ptr[void], w: ptr[Write], spec: FormatSpec): [usize, Error]
+            VAR buf: [u8; 16]
+            VAR len = uint_to_str(*self, buf.ptr, spec)
+            RETURN w.write(slice { ptr: buf.ptr, len })
+        ENDFN
+    ENDIMPL
+
+    IMPL Format FOR i32
+        FN fmt(self: ptr[void], w: ptr[Write], spec: FormatSpec): [usize, Error]
+            VAR buf: [u8; 32]
+            VAR len = int_to_str(*self, buf.ptr, spec)
+            RETURN w.write(slice { ptr: buf.ptr, len })
+        ENDFN
+    ENDIMPL
+
+    IMPL Format FOR u32
+        FN fmt(self: ptr[void], w: ptr[Write], spec: FormatSpec): [usize, Error]
+            VAR buf: [u8; 32]
+            VAR len = uint_to_str(*self, buf.ptr, spec)
+            RETURN w.write(slice { ptr: buf.ptr, len })
+        ENDFN
+    ENDIMPL
+
+    IMPL Format FOR i64
+        FN fmt(self: ptr[void], w: ptr[Write], spec: FormatSpec): [usize, Error]
+            VAR buf: [u8; 64]
+            VAR len = int_to_str(*self, buf.ptr, spec)
+            RETURN w.write(slice { ptr: buf.ptr, len })
+        ENDFN
+    ENDIMPL
+
+    IMPL Format FOR u64
+        FN fmt(self: ptr[void], w: ptr[Write], spec: FormatSpec): [usize, Error]
+            VAR buf: [u8; 64]
+            VAR len = uint_to_str(*self, buf.ptr, spec)
+            RETURN w.write(slice { ptr: buf.ptr, len })
+        ENDFN
+    ENDIMPL
+
+    IMPL Format FOR isize
+        FN fmt(self: ptr[void], w: ptr[Write], spec: FormatSpec): [usize, Error]
+            VAR buf: [u8; 64]
+            VAR len = int_to_str(*self, buf.ptr, spec)
+            RETURN w.write(slice { ptr: buf.ptr, len })
+        ENDFN
+    ENDIMPL
+
+    IMPL Format FOR usize
+        FN fmt(self: ptr[void], w: ptr[Write], spec: FormatSpec): [usize, Error]
+            VAR buf: [u8; 64]
+            VAR len = uint_to_str(*self, buf.ptr, spec)
+            RETURN w.write(slice { ptr: buf.ptr, len })
+        ENDFN
+    ENDIMPL
+
+    IMPL Format FOR bool
+        FN fmt(self: ptr[void], w: ptr[Write], spec: FormatSpec): [usize, Error]
+            IF *self
+                RETURN w.write_str("true")
+            ELSE
+                RETURN w.write_str("false")
+            ENDIF
+        ENDFN
+    ENDIMPL
+
+    IMPL Format FOR Str
+        FN fmt(self: ptr[void], w: ptr[Write], spec: FormatSpec): [usize, Error]
+            RETURN w.write_str(*self)
+        ENDFN
+    ENDIMPL
+
+    IMPL Format FOR slice[u8]
+        FN fmt(self: ptr[void], w: ptr[Write], spec: FormatSpec): [usize, Error]
+            RETURN w.write(*self)
+        ENDFN
+    ENDIMPL
+
+    IMPL Format FOR ptr[void]
+        FN fmt(self: ptr[void], w: ptr[Write], spec: FormatSpec): [usize, Error]
+            VAR buf: [u8; 32]
+            VAR len = ptr_to_str(*self, buf.ptr, spec)
+            RETURN w.write(slice { ptr: buf.ptr, len })
+        ENDFN
+    ENDIMPL
+
+    ; --- Float formatting (requires more buffer) ---
+
+    IMPL Format FOR f32
+        FN fmt(self: ptr[void], w: ptr[Write], spec: FormatSpec): [usize, Error]
+            VAR buf: [u8; 64]
+            VAR len = float_to_str(*self, buf.ptr, spec)
+            RETURN w.write(slice { ptr: buf.ptr, len })
+        ENDFN
+    ENDIMPL
+
+    IMPL Format FOR f64
+        FN fmt(self: ptr[void], w: ptr[Write], spec: FormatSpec): [usize, Error]
+            VAR buf: [u8; 128]
+            VAR len = float_to_str(*self, buf.ptr, spec)
+            RETURN w.write(slice { ptr: buf.ptr, len })
+        ENDFN
+    ENDIMPL
+
+    ; --- Primitive conversion functions (intrinsics) ---
+
+    EXTERN FN int_to_str(val: i64, buf: ptr[u8], spec: FormatSpec): usize ENDFN
+    EXTERN FN uint_to_str(val: u64, buf: ptr[u8], spec: FormatSpec): usize ENDFN
+    EXTERN FN float_to_str(val: f64, buf: ptr[u8], spec: FormatSpec): usize ENDFN
+    EXTERN FN ptr_to_str(val: ptr[void], buf: ptr[u8], spec: FormatSpec): usize ENDFN
+
+ENDMODULE

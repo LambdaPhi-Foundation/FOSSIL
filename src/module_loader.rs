@@ -15,6 +15,18 @@ impl ModuleLoader {
         }
     }
 
+    pub fn load_module(&mut self, path: &[String]) -> Result<ModuleDecl, String> {
+        if path.is_empty() {
+            return Err("Empty module path".into());
+        }
+
+        match path[0].as_str() {
+            "MACHINE" => self.load_machine_module(path),
+            "CORE" => self.load_core_module(path),
+            _ => Err(format!("Unknown module prefix: {}", path[0])),
+        }
+    }
+
     pub fn load_machine_module(&mut self, path: &[String]) -> Result<ModuleDecl, String> {
         if path.is_empty() || path[0] != "MACHINE" {
             return Err("Not a MACHINE module path".into());
@@ -30,6 +42,7 @@ impl ModuleLoader {
             ModuleDecl {
                 name: "MACHINE".into(),
                 items: vec![],
+                reexports: vec![],
             }
         } else if path.len() == 2 {
             let module_name = path[1].to_lowercase();
@@ -48,6 +61,51 @@ impl ModuleLoader {
 
         self.module_cache.insert(module_key, module.clone());
         Ok(module)
+    }
+
+    pub fn load_core_module(&mut self, path: &[String]) -> Result<ModuleDecl, String> {
+        if path.is_empty() || path[0] != "CORE" {
+            return Err("Not a CORE module path".into());
+        }
+
+        let module_key = path.join("::");
+        if let Some(cached) = self.module_cache.get(&module_key) {
+            return Ok(cached.clone());
+        }
+
+        let module = if path.len() == 1 {
+            // CORE root - create empty module
+            ModuleDecl {
+                name: "CORE".into(),
+                items: vec![],
+                reexports: vec![],
+            }
+        } else if path.len() == 2 {
+            let module_name = path[1].to_lowercase();
+            match module_name.as_str() {
+                "mem" => self.load_core_file("mem.fsl", "mem")?,
+                "slice" => self.load_core_file("slice.fsl", "slice")?,
+                "io" => self.load_core_file("io.fsl", "io")?,
+                "fmt" => self.load_core_file("fmt.fsl", "fmt")?,
+                "err" => self.load_core_file("err.fsl", "err")?,
+                "panic" => self.load_core_file("panic.fsl", "panic")?,
+                "alloc" => self.load_core_file("alloc.fsl", "alloc")?,
+                "atomic" => self.load_core_file("atomic.fsl", "atomic")?,
+                _ => return Err(format!("Unknown CORE module: {}", path[1])),
+            }
+        } else {
+            return Err(format!("Invalid CORE module path: {}", module_key));
+        };
+
+        self.module_cache.insert(module_key, module.clone());
+        Ok(module)
+    }
+
+    fn load_core_file(&self, filename: &str, expected_name: &str) -> Result<ModuleDecl, String> {
+        let path = Path::new("src/core").join(filename);
+        let source = fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read CORE module file {}: {}", filename, e))?;
+        self.parse_module(&source, expected_name)
     }
 
     fn load_file(&self, filename: &str) -> Result<String, String> {

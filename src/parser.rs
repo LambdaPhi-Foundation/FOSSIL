@@ -81,6 +81,8 @@ impl Parser {
             TokenKind::Const => Ok(Item::ConstDecl(self.parse_const_decl()?)),
             TokenKind::Var => Ok(Item::VarDecl(self.parse_var_decl_item()?)),
             TokenKind::AsmBlock(_) => Ok(Item::AsmBlock(self.parse_asm_block_from_token()?)),
+            TokenKind::Trait => Ok(Item::TraitDecl(self.parse_trait_decl()?)),
+            TokenKind::Impl => Ok(Item::ImplDecl(self.parse_impl_decl()?)),
             _ => Err(format!(
                 "expected item declaration at line {} col {}, got {:?}",
                 self.peek().line, self.peek().col, self.peek_kind()
@@ -98,11 +100,105 @@ impl Parser {
         self.expect(TokenKind::Module)?;
         let name = self.parse_ident()?;
         let mut items = Vec::new();
+        let mut reexports = Vec::new();
         while !self.check(TokenKind::EndModule) && !self.is_at_end() {
-            items.push(self.parse_item()?);
+            // Check for EXPORT/REEXPORT keyword
+            if self.check_ident_text("EXPORT") || self.check_ident_text("REEXPORT") {
+                self.advance(); // consume EXPORT/REEXPORT
+                // Parse comma-separated list of names to re-export
+                reexports.push(self.parse_import_ident()?);
+                while self.check(TokenKind::Comma) {
+                    self.advance();
+                    reexports.push(self.parse_import_ident()?);
+                }
+            } else {
+                items.push(self.parse_item()?);
+            }
         }
         self.expect(TokenKind::EndModule)?;
-        Ok(ModuleDecl { name, items })
+        Ok(ModuleDecl { name, items, reexports })
+    }
+
+    fn parse_trait_decl(&mut self) -> Result<TraitDecl, String> {
+        self.expect(TokenKind::Trait)?;
+        let name = self.parse_ident()?;
+        let generic_params = self.parse_generic_params()?;
+        let mut methods = Vec::new();
+        let mut supertraits = Vec::new();
+        while !self.check(TokenKind::EndTrait) && !self.is_at_end() {
+            // Check for supertrait: TRAIT Foo : Bar
+            if self.check_ident_text(":") {
+                self.advance(); // consume :
+                let supertrait = self.parse_import_ident()?;
+                supertraits.push(supertrait);
+            } else {
+                methods.push(self.parse_trait_method()?);
+            }
+        }
+        self.expect(TokenKind::EndTrait)?;
+        Ok(TraitDecl { name, generic_params, methods, supertraits })
+    }
+
+    fn parse_trait_method(&mut self) -> Result<TraitMethod, String> {
+        self.expect(TokenKind::Fn)?;
+        let name = self.parse_ident()?;
+        let generic_params = self.parse_generic_params()?;
+        self.expect(TokenKind::LParen)?;
+        let params = self.parse_param_list()?;
+        self.expect(TokenKind::RParen)?;
+        self.expect(TokenKind::Colon)?;
+        let return_type = self.parse_type()?;
+        
+        // Check for default implementation
+        let (has_body, body) = if self.check(TokenKind::LBrace) {
+            self.advance(); // consume {
+            let body = self.parse_block()?;
+            self.expect(TokenKind::RBrace)?;
+            (true, Some(body))
+        } else if self.check(TokenKind::EndFn) {
+            self.advance(); // consume ENDFN
+            (false, None)
+        } else {
+            // No body and no ENDFN - just a declaration, continue to next item
+            (false, None)
+        };
+        
+        Ok(TraitMethod {
+            name,
+            generic_params,
+            params,
+            return_type,
+            has_body,
+            body,
+        })
+    }
+
+    fn parse_impl_decl(&mut self) -> Result<ImplDecl, String> {
+        self.expect(TokenKind::Impl)?;
+        let generic_params = self.parse_generic_params()?;
+        
+        // Parse qualified trait name (e.g., CORE.io.Write)
+        let mut trait_parts = Vec::new();
+        trait_parts.push(self.parse_ident()?);
+        while self.check(TokenKind::DColon) {
+            self.advance(); // consume ::
+            trait_parts.push(self.parse_ident()?);
+        }
+        let trait_name = trait_parts.join("::");
+        
+        self.expect(TokenKind::For)?;
+        let for_type = self.parse_type()?;
+        let mut methods = Vec::new();
+        while !self.check(TokenKind::EndImpl) && !self.is_at_end() {
+            methods.push(self.parse_function()?);
+        }
+        self.expect(TokenKind::EndImpl)?;
+        Ok(ImplDecl {
+            trait_name,
+            for_type,
+            generic_params,
+            methods,
+        })
     }
 
     fn parse_const_decl(&mut self) -> Result<ConstDecl, String> {
@@ -234,10 +330,19 @@ impl Parser {
             None
         };
         
+        // Optional re-export: REEXPORT
+        let reexport = if self.check_ident_text("REEXPORT") || self.check_ident_text("reexport") {
+            self.advance(); // consume REEXPORT
+            true
+        } else {
+            false
+        };
+        
         Ok(ImportDecl {
             path,
             alias,
             items,
+            reexport,
         })
     }
 
@@ -255,6 +360,7 @@ impl Parser {
             TokenKind::Ident(name) => Ok(name.clone()),
             TokenKind::Machine => Ok("MACHINE".into()),
             TokenKind::NoMachine => Ok("NO_MACHINE".into()),
+            TokenKind::Core => Ok("CORE".into()),
             TokenKind::Struct => Ok("STRUCT".into()),
             TokenKind::Enum => Ok("ENUM".into()),
             TokenKind::Fn => Ok("FN".into()),
@@ -397,7 +503,19 @@ impl Parser {
             }
             TokenKind::Ident(_) => {
                 let name = self.parse_ident()?;
-                Ok(Type::Named(name))
+                if self.check(TokenKind::LBracket) {
+                    self.advance(); // consume '['
+                    let mut type_args = Vec::new();
+                    type_args.push(self.parse_type()?);
+                    while self.check(TokenKind::Comma) {
+                        self.advance();
+                        type_args.push(self.parse_type()?);
+                    }
+                    self.expect(TokenKind::RBracket)?;
+                    Ok(Type::GenericInst(Box::new(Type::Named(name)), type_args))
+                } else {
+                    Ok(Type::Named(name))
+                }
             }
             _ => Err(format!(
                 "expected type at line {} col {}, got {:?}",
@@ -1142,8 +1260,10 @@ impl Parser {
                         TokenKind::LParen |
                         TokenKind::LBracket
                     );
+                    // Only attempt generic instantiation if next token looks like a type
                     if is_type_start {
                         // Try to parse as generic instantiation
+                        // Save position BEFORE consuming '['
                         let saved_pos = self.pos;
                         self.advance(); // consume '['
                         let mut type_args = Vec::new();
@@ -1165,7 +1285,7 @@ impl Parser {
                             }
                             Err(_) => {}
                         }
-                        // Not generic instantiation, restore and parse as index
+                        // Not generic instantiation, restore position to before '['
                         self.pos = saved_pos;
                     }
                 }

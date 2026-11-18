@@ -1,0 +1,47 @@
+; CORE.err — Minimal error handling using tagged unions
+; No Result/Option types — use tagged unions directly: [T, Error]
+
+MODULE err
+
+    ; Error kind classification
+    ENUM ErrorKind
+        NotFound
+        PermissionDenied
+        ConnectionRefused
+        ConnectionReset
+        ConnectionAborted
+        NotConnected
+        AddrInUse
+        AddrNotAvailable
+        BrokenPipe
+        AlreadyExists
+        WouldBlock
+        InvalidInput
+        InvalidData
+        TimedOut
+        Interrupted
+        WriteZero
+        Other
+    ENDENUM
+
+    ; Error payload
+    STRUCT Error
+        kind: ErrorKind
+        message: Str  ; empty Str if no message
+    ENDSTRUCT
+
+    ; --- Constructors ---
+
+    FN error_new(kind: ErrorKind, msg: Str): Error
+        RETURN Error { kind, message: msg }
+    ENDFN
+
+    FN error_io(msg: Str): Error
+        RETURN error_new(ErrorKind.Other, msg)
+    ENDFN
+
+    FN error_oom(): Error
+        RETURN error_new(ErrorKind.Other, "out of memory")
+    ENDFN
+
+ENDMODULE

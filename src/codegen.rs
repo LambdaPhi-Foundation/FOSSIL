@@ -26,6 +26,30 @@ pub struct Codegen {
     indent: usize,
     imported_modules: HashMap<String, String>, // short_name -> full_path
     module_stack: Vec<String>,
+    // Trait system
+    traits: HashMap<String, TraitCodegenDef>,
+    impls: Vec<ImplCodegenDef>,
+    vtables: Vec<String>,
+}
+
+#[derive(Clone)]
+struct TraitCodegenDef {
+    name: String,
+    methods: Vec<TraitMethodCodegenSig>,
+}
+
+#[derive(Clone)]
+struct TraitMethodCodegenSig {
+    name: String,
+    params: Vec<(String, String)>,
+    ret_ty: String,
+}
+
+#[derive(Clone)]
+struct ImplCodegenDef {
+    trait_name: String,
+    for_ty: String,
+    methods: HashMap<String, FnSig>,
 }
 
 #[derive(Clone)]
@@ -80,7 +104,7 @@ type CodegenResult<T> = Result<T, CodegenError>;
 
 impl Codegen {
     pub fn new() -> Self {
-        Self {
+        let mut this = Self {
             struct_defs: Vec::new(),
             struct_order: Vec::new(),
             enum_defs: Vec::new(),
@@ -99,7 +123,24 @@ impl Codegen {
             indent: 0,
             imported_modules: HashMap::new(),
             module_stack: Vec::new(),
-        }
+            traits: HashMap::new(),
+            impls: Vec::new(),
+            vtables: Vec::new(),
+        };
+        
+        // Built-in libc functions (always available)
+        this.functions.insert("puts".into(), FnSig {
+            name: "puts".into(),
+            params: vec![("s".into(), "i8*".into())],
+            ret_ty: "i32".into(),
+        });
+        this.functions.insert("putchar".into(), FnSig {
+            name: "putchar".into(),
+            params: vec![("c".into(), "i32".into())],
+            ret_ty: "i32".into(),
+        });
+        
+        this
     }
 
     fn load_machine_module(&mut self, path: &[String]) -> Result<ModuleDecl, String> {
@@ -112,6 +153,7 @@ impl Codegen {
             return Ok(ModuleDecl {
                 name: "MACHINE".into(),
                 items: vec![],
+                reexports: vec![],
             });
         } else if path.len() == 2 {
             let filename = match path[1].to_lowercase().as_str() {
@@ -265,6 +307,43 @@ impl Codegen {
                 Item::AsmBlock(asm) => {
                     self.emit_asm_block(asm)?;
                 }
+                Item::TraitDecl(t) => {
+                    let methods: Vec<TraitMethodCodegenSig> = t.methods.iter().map(|m| {
+                        let params: Vec<(String, String)> = m.params.iter().map(|p| {
+                            (p.name.clone(), self.ty_to_llvm(&p.ty).unwrap())
+                        }).collect();
+                        let ret_ty = self.ty_to_llvm(&m.return_type).unwrap();
+                        TraitMethodCodegenSig {
+                            name: m.name.clone(),
+                            params,
+                            ret_ty,
+                        }
+                    }).collect();
+                    self.traits.insert(t.name.clone(), TraitCodegenDef {
+                        name: t.name.clone(),
+                        methods,
+                    });
+                }
+                Item::ImplDecl(i) => {
+                    let mut method_map = HashMap::new();
+                    for m in &i.methods {
+                        let params: Vec<(String, String)> = m.params.iter().map(|p| {
+                            (p.name.clone(), self.ty_to_llvm(&p.ty).unwrap())
+                        }).collect();
+                        let ret_ty = self.ty_to_llvm(&m.return_type).unwrap();
+                        let generic_params: Vec<String> = m.generic_params.iter().map(|p| p.name.clone()).collect();
+                        method_map.insert(m.name.clone(), FnSig {
+                            name: m.name.clone(),
+                            params,
+                            ret_ty: self.ty_to_llvm(&m.return_type).unwrap(),
+                        });
+                    }
+                    self.impls.push(ImplCodegenDef {
+                        trait_name: i.trait_name.clone(),
+                        for_ty: self.ty_to_llvm(&i.for_type).unwrap(),
+                        methods: method_map,
+                    });
+                }
             }
         }
 
@@ -286,6 +365,30 @@ impl Codegen {
             }
         }
 
+        // VTable generation for trait implementations
+        for impl_def in &self.impls {
+            if let Some(trait_def) = self.traits.get(&impl_def.trait_name) {
+                let vtable_name = format!("%vtable.{}.{}", impl_def.trait_name.replace("::", "."), self.sanitize_name(&impl_def.for_ty));
+                
+                // Build vtable entries
+                let mut vtable_entries = Vec::new();
+                for method in &trait_def.methods {
+                    let method_key = format!("{}.{}", impl_def.trait_name, method.name);
+                    if let Some(fn_sig) = impl_def.methods.get(&method_key) {
+                        // Build function pointer type
+                        let param_strs: Vec<String> = fn_sig.params.iter().map(|(_, ty)| ty.clone()).collect();
+                        let fn_ptr_ty = format!("{} ({})*", fn_sig.ret_ty, param_strs.join(", "));
+                        vtable_entries.push(format!("{}* getelementptr inbounds ({}, ptr @{}, i32 0, i32 0)", 
+                            fn_ptr_ty, fn_ptr_ty, fn_sig.name));
+                    }
+                }
+                
+                let vtable_ty = format!("{{ {} }}", vtable_entries.join(", "));
+                let vtable_global = format!("{} = constant {} {{ {} }}", vtable_name, vtable_ty, vtable_entries.join(", "));
+                self.vtables.push(vtable_global);
+            }
+        }
+
         // Emit extern function declarations
         for item in &program.items {
             if let Item::ExternDecl(e) = item {
@@ -295,6 +398,9 @@ impl Codegen {
 
         // Emit built-in MACHINE::IO functions as extern declarations
         self.emit_machine_io_decls();
+
+        // Emit CORE intrinsics (memory operations, etc.)
+        self.emit_core_intrinsics();
 
         // Emit functions (string constants will be gathered into self.global_defs)
         for item in &program.items {
@@ -404,6 +510,8 @@ impl Codegen {
                 self.module_stack.pop();
             }
             Item::MachineDecl(_) => {}
+            Item::TraitDecl(_) => {}
+            Item::ImplDecl(_) => {}
             Item::AsmBlock(asm) => {
                 self.emit_asm_block(asm)?;
             }
@@ -715,6 +823,14 @@ impl Codegen {
         // puts/putchar for backwards compatibility
         self.global_defs.push("declare i32 @puts(i8*)".into());
         self.global_defs.push("declare i32 @putchar(i32)".into());
+    }
+
+    fn emit_core_intrinsics(&mut self) {
+        // LLVM memory intrinsics
+        self.global_defs.push("declare i8* @llvm.memcpy.p0.p0.i64(i8*, i8*, i64, i1)".into());
+        self.global_defs.push("declare i8* @llvm.memmove.p0.p0.i64(i8*, i8*, i64, i1)".into());
+        self.global_defs.push("declare i8* @llvm.memset.p0.i64(i8*, i8, i64, i1)".into());
+        self.global_defs.push("declare i32 @llvm.memcmp.p0.p0.i64(i8*, i8*, i64, i1)".into());
     }
 
     fn emit_extern_decl(&mut self, e: &ExternDecl) -> CodegenResult<()> {
@@ -1973,6 +2089,11 @@ Expr::Call { callee, args } => {
                     _ => return Err(CodegenError::Msg("indirect function calls not yet supported".into())),
                 };
                 
+                // Handle CORE memory intrinsics (map to LLVM intrinsics)
+                if matches!(func_name.as_str(), "memcpy" | "memmove" | "memset" | "memcmp") {
+                    return self.emit_mem_intrinsic(&func_name, args);
+                }
+                
                 if let Some(sig_info) = self.functions.get(&func_name).cloned() {
                     let mut arg_strs = Vec::new();
                     for arg in args {
@@ -2041,6 +2162,36 @@ Expr::Call { callee, args } => {
                 }
                 let obj_ptr = self.emit_expr(object)?;
                 let (obj_ty, obj_ptr_str) = self.split_ty_val(&obj_ptr)?;
+                
+                // Check if this is a trait object (fat pointer with vtable)
+                if obj_ty.starts_with('{') && obj_ty.contains("vtable") {
+                    // This is a trait object - extract vtable and do dynamic dispatch
+                    // Trait object layout: { i8*, %vtable.Trait* }
+                    // Extract vtable pointer (second field)
+                    let vtable_ptr = self.new_reg();
+                    self.line(&format!(
+                        "{} = extractvalue {} {}, 1",
+                        vtable_ptr, obj_ty, obj_ptr_str
+                    ))?;
+                    
+                    // Get function pointer from vtable
+                    // VTable layout: { method1_ptr, method2_ptr, ... }
+                    // We need to find the method index from the trait definition
+                    let trait_name = self.extract_trait_name_from_ty(&obj_ty);
+                    let method_idx = self.get_method_index(&trait_name, member);
+                    
+                    let method_ptr = self.new_reg();
+                    self.line(&format!(
+                        "{} = extractvalue {} {}, {}",
+                        method_ptr, obj_ty, vtable_ptr, method_idx
+                    ))?;
+                    
+                    // Return function pointer type
+                    // For now, return a function pointer type - actual call will be handled in Call
+                    return Ok(format!("ptr {}", method_ptr));
+                }
+                
+                // Regular struct member access
                 let struct_ty = self.deref_elem_ty(&obj_ty)?;
                 let field_idx = self.field_index_from_ty(&struct_ty, member)?;
                 let elem_ty = self.field_ty_from_ty(&struct_ty, member)?;
@@ -2145,6 +2296,10 @@ Expr::Call { callee, args } => {
                     ("i64", "i32") => "trunc",
                     ("i32", "i16") => "trunc",
                     ("i16", "i32") => "sext",
+                    ("i8", "i32") => "sext",
+                    ("i8", "i64") => "sext",
+                    ("u8", "i32") => "zext",
+                    ("u8", "i64") => "zext",
                     ("i8*", "i64") => "ptrtoint",
                     ("i64", "i8*") => "inttoptr",
                     _ => "bitcast",
@@ -2168,6 +2323,32 @@ Expr::Call { callee, args } => {
         let l = self.label_counter;
         self.label_counter += 1;
         format!("{}.{}", prefix, l)
+    }
+
+    fn sanitize_name(&self, name: &str) -> String {
+        name.replace("::", "_").replace(".", "_").replace("[", "").replace("]", "").replace("*", "").replace(" ", "")
+    }
+
+    fn extract_trait_name_from_ty(&self, ty: &str) -> String {
+        // Extract trait name from trait object type like "{ i8*, %vtable.Write* }"
+        if let Some(start) = ty.find("%vtable.") {
+            let after = &ty[start + 8..]; // skip "%vtable."
+            if let Some(end) = after.find('*') {
+                return after[..end].to_string();
+            }
+        }
+        "unknown".to_string()
+    }
+
+    fn get_method_index(&self, trait_name: &str, method_name: &str) -> usize {
+        if let Some(trait_def) = self.traits.get(trait_name) {
+            for (idx, method) in trait_def.methods.iter().enumerate() {
+                if method.name == method_name {
+                    return idx;
+                }
+            }
+        }
+        0
     }
 
     fn get_or_emit_string_const(&mut self, s: &str) -> (String, usize) {
@@ -2211,7 +2392,14 @@ Expr::Call { callee, args } => {
             Type::F32 => Ok("float".to_string()),
             Type::F64 => Ok("double".to_string()),
             Type::Void => Ok("void".to_string()),
-            Type::Ptr(inner) => Ok(format!("{}*", self.ty_to_llvm(inner)?)),
+            Type::Ptr(inner) => {
+                let inner_llvm = self.ty_to_llvm(inner)?;
+                if inner_llvm == "void" {
+                    Ok("i8*".to_string())
+                } else {
+                    Ok(format!("{}*", inner_llvm))
+                }
+            }
             Type::Own(inner) => Ok(format!("{}*", self.ty_to_llvm(inner)?)),
             Type::Named(n) => {
                 if n == "string" {
@@ -2241,6 +2429,14 @@ Expr::Call { callee, args } => {
             }
             Type::Generic(_) => {
                 Err(CodegenError::Msg("generic type should be monomorphized before codegen".into()))
+            }
+            Type::TraitObject(name) => {
+                // Trait objects are fat pointers: { i8*, i8* } (data pointer + vtable pointer)
+                Ok(format!("{{ i8*, %vtable.{}* }}", name))
+            }
+            Type::GenericInst(base, _args) => {
+                // For now, use the base type's LLVM representation
+                self.ty_to_llvm(base)
             }
         }
     }
@@ -2420,6 +2616,84 @@ Expr::Call { callee, args } => {
                 }
             }
             _ => Err(CodegenError::Msg("non-constant expression in constant declaration".into())),
+        }
+    }
+    
+    fn emit_mem_intrinsic(&mut self, name: &str, args: &[Expr]) -> CodegenResult<String> {
+        match name {
+            "memcpy" => {
+                // llvm.memcpy.p0.p0.i64(i8* dest, i8* src, i64 len, i1 isvolatile)
+                if args.len() != 3 {
+                    return Err(CodegenError::Msg("memcpy expects 3 arguments".into()));
+                }
+                let dest = self.emit_expr(&args[0])?;
+                let src = self.emit_expr(&args[1])?;
+                let len = self.emit_expr(&args[2])?;
+                let (dest_ty, dest_val) = self.split_ty_val(&dest)?;
+                let (src_ty, src_val) = self.split_ty_val(&src)?;
+                let (len_ty, len_val) = self.split_ty_val(&len)?;
+                let res = self.new_reg();
+                self.line(&format!(
+                    "{} = call i8* @llvm.memcpy.p0.p0.i64(i8* {}, i8* {}, i64 {}, i1 false)",
+                    res, dest_val, src_val, len_val
+                ))?;
+                Ok(format!("{} {}", dest_ty, res))
+            }
+            "memmove" => {
+                // llvm.memmove.p0.p0.i64(i8* dest, i8* src, i64 len, i1 isvolatile)
+                if args.len() != 3 {
+                    return Err(CodegenError::Msg("memmove expects 3 arguments".into()));
+                }
+                let dest = self.emit_expr(&args[0])?;
+                let src = self.emit_expr(&args[1])?;
+                let len = self.emit_expr(&args[2])?;
+                let (dest_ty, dest_val) = self.split_ty_val(&dest)?;
+                let (src_ty, src_val) = self.split_ty_val(&src)?;
+                let (len_ty, len_val) = self.split_ty_val(&len)?;
+                let res = self.new_reg();
+                self.line(&format!(
+                    "{} = call i8* @llvm.memmove.p0.p0.i64(i8* {}, i8* {}, i64 {}, i1 false)",
+                    res, dest_val, src_val, len_val
+                ))?;
+                Ok(format!("{} {}", dest_ty, res))
+            }
+            "memset" => {
+                // llvm.memset.p0.i64(i8* dest, i8 val, i64 len, i1 isvolatile)
+                if args.len() != 3 {
+                    return Err(CodegenError::Msg("memset expects 3 arguments".into()));
+                }
+                let dest = self.emit_expr(&args[0])?;
+                let val = self.emit_expr(&args[1])?;
+                let len = self.emit_expr(&args[2])?;
+                let (dest_ty, dest_val) = self.split_ty_val(&dest)?;
+                let (_, val_val) = self.split_ty_val(&val)?;
+                let (len_ty, len_val) = self.split_ty_val(&len)?;
+                let res = self.new_reg();
+                self.line(&format!(
+                    "{} = call i8* @llvm.memset.p0.i64(i8* {}, i8 {}, i64 {}, i1 false)",
+                    res, dest_val, val_val, len_val
+                ))?;
+                Ok(format!("{} {}", dest_ty, res))
+            }
+            "memcmp" => {
+                // llvm.memcmp.p0.p0.i64(i8* a, i8* b, i64 len, i1 isvolatile) -> i32
+                if args.len() != 3 {
+                    return Err(CodegenError::Msg("memcmp expects 3 arguments".into()));
+                }
+                let a = self.emit_expr(&args[0])?;
+                let b = self.emit_expr(&args[1])?;
+                let len = self.emit_expr(&args[2])?;
+                let (a_ty, a_val) = self.split_ty_val(&a)?;
+                let (b_ty, b_val) = self.split_ty_val(&b)?;
+                let (len_ty, len_val) = self.split_ty_val(&len)?;
+                let res = self.new_reg();
+                self.line(&format!(
+                    "{} = call i32 @llvm.memcmp.p0.p0.i64(i8* {}, i8* {}, i64 {}, i1 false)",
+                    res, a_val, b_val, len_val
+                ))?;
+                Ok(format!("i32 {}", res))
+            }
+            _ => Err(CodegenError::Msg(format!("unknown memory intrinsic: {}", name))),
         }
     }
 }

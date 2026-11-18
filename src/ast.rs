@@ -17,6 +17,8 @@ pub enum Item {
     ConstDecl(ConstDecl),
     VarDecl(VarDecl),
     AsmBlock(AsmBlock),
+    TraitDecl(TraitDecl),
+    ImplDecl(ImplDecl),
 }
 
 #[derive(Debug, Clone)]
@@ -28,6 +30,7 @@ pub struct MachineDecl {
 pub struct ModuleDecl {
     pub name: String,
     pub items: Vec<Item>,
+    pub reexports: Vec<String>,  // names of items this module re-exports (e.g., "Conout", "Conin")
 }
 
 #[derive(Debug, Clone)]
@@ -56,6 +59,7 @@ pub struct ImportDecl {
     pub path: Vec<String>,  // e.g., ["MACHINE", "IO"] or ["local", "types"]
     pub alias: Option<String>,  // optional: USE ... AS alias
     pub items: Option<Vec<String>>,  // optional: USE ... :: { item1, item2 }
+    pub reexport: bool,  // optional: USE ... REEXPORT (re-export imported module's contents)
 }
 
 #[derive(Debug, Clone)]
@@ -126,6 +130,8 @@ pub enum Type {
     Tuple(Vec<Type>),       // (T1, T2, ...) - product type, all values
     Union(Vec<Type>),       // [T1, T2, ...] - sum type, any one value
     Generic(String),        // Generic type parameter (T, U, etc.)
+    TraitObject(String),    // Trait object: dyn Trait
+    GenericInst(Box<Type>, Vec<Type>), // Generic type instantiation: Result[T, E]
 }
 
 impl Type {
@@ -251,6 +257,32 @@ pub struct AsmBlock {
     pub flags: AsmFlags,
     pub is_expr: bool,
     pub result_type: Option<Type>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TraitMethod {
+    pub name: String,
+    pub generic_params: Vec<GenericParam>,
+    pub params: Vec<Param>,
+    pub return_type: Type,
+    pub has_body: bool,                     // default impl
+    pub body: Option<Block>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TraitDecl {
+    pub name: String,
+    pub generic_params: Vec<GenericParam>,  // TRAIT Foo[T]
+    pub methods: Vec<TraitMethod>,
+    pub supertraits: Vec<String>,           // TRAIT Foo : Bar
+}
+
+#[derive(Debug, Clone)]
+pub struct ImplDecl {
+    pub trait_name: String,
+    pub for_type: Type,                     // IMPL Foo FOR Bar
+    pub generic_params: Vec<GenericParam>,  // IMPL [T] Foo FOR Bar[T]
+    pub methods: Vec<Function>,             // method bodies
 }
 
 #[derive(Debug, Clone)]

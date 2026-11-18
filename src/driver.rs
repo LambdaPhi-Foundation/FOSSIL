@@ -177,7 +177,6 @@ pub fn compile_ir_to_binary(
             cmd.arg("-ffreestanding");
         } else {
             cmd.arg("-ffreestanding");
-            cmd.arg("-nostdlib");
         }
     } else {
         // MACHINE mode object file

@@ -1,0 +1,96 @@
+; CORE.slice — Fat pointer types: slice[T] and Str
+; No heap allocation, just (ptr, len) pairs
+
+MODULE slice
+    USE CORE.mem
+    USE CORE.err
+
+    ; Generic slice: fat pointer (ptr + len)
+    STRUCT slice[T]
+        ptr: ptr[T]
+        len: u64
+    ENDSTRUCT
+
+    ; String slice: immutable UTF-8 view
+    STRUCT Str
+        ptr: ptr[u8]
+        len: u64
+    ENDSTRUCT
+
+    ; --- Construction ---
+
+    FN slice_from_parts[T](ptr: ptr[T], len: u64): slice[T]
+        RETURN slice { ptr, len }
+    ENDFN
+
+    FN str_from_parts(ptr: ptr[u8], len: u64): Str
+        RETURN Str { ptr, len }
+    ENDFN
+
+    ; From array (compiler knows length)
+    FN slice_from_array[T, N](arr: ptr[[T; N]]): slice[T]
+        RETURN slice { ptr: arr, len: N }
+    ENDFN
+
+    ; From string literal (compiler emits .ptr and .len)
+    FN str_from_literal(ptr: ptr[u8], len: u64): Str
+        RETURN Str { ptr, len }
+    ENDFN
+
+    ; --- Accessors ---
+
+    FN slice_len[T](s: slice[T]): u64
+        RETURN s.len
+    ENDFN
+
+    FN slice_ptr[T](s: slice[T]): ptr[T]
+        RETURN s.ptr
+    ENDFN
+
+    FN str_len(s: Str): u64
+        RETURN s.len
+    ENDFN
+
+    FN str_ptr(s: Str): ptr[u8]
+        RETURN s.ptr
+    ENDFN
+
+    FN str_as_slice(s: Str): slice[u8]
+        RETURN slice { ptr: s.ptr, len: s.len }
+    ENDFN
+
+    ; --- Indexing (bounds-checked) ---
+
+    FN slice_get[T](s: slice[T], i: u64): [T, Error]
+        IF i >= s.len
+            RETURN Error { kind: ErrorKind.InvalidInput, message: "index out of bounds" }
+        ENDIF
+        RETURN *(s.ptr + i)
+    ENDFN
+
+    ; --- Subslice ---
+
+    FN slice_sub[T](s: slice[T], start: u64, end: u64): [slice[T], Error]
+        IF end > s.len OR start > end
+            RETURN Error { kind: ErrorKind.InvalidInput, message: "invalid subslice range" }
+        ENDIF
+        RETURN slice { ptr: s.ptr + start, len: end - start }
+    ENDFN
+
+    FN str_sub(s: Str, start: u64, end: u64): [Str, Error]
+        IF end > s.len OR start > end
+            RETURN Error { kind: ErrorKind.InvalidInput, message: "invalid substring range" }
+        ENDIF
+        RETURN Str { ptr: s.ptr + start, len: end - start }
+    ENDFN
+
+    ; --- Comparison ---
+
+    FN slice_eq[T](a: slice[T], b: slice[T]): bool
+        IF a.len != b.len
+            RETURN false
+        ENDIF
+        RETURN memcmp(a.ptr, b.ptr, a.len) == 0
+    ENDFN
+
+ENDMODULE

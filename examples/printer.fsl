@@ -1,0 +1,27 @@
+; Simple printer using extern C (libc puts/putchar)
+; Works on Linux/macOS/Windows with MinGW
+
+NO_MACHINE
+
+; Print a string + newline (raw ptr[u8])
+; puts/putchar are built-in externs in codegen
+FN println(s: ptr[u8]): void
+    puts(s)
+ENDFN
+
+; Print char
+FN print_char(c: u8): void
+    putchar(c as i32)
+ENDFN
+
+FN main(): i32
+    println("Hello from Fossil!")
+    println("Testing characters:")
+    
+    print_char('A' as u8)
+    print_char('B' as u8)
+    print_char('C' as u8)
+    putchar('\n' as i32)
+    
+    RETURN 0
+ENDFN

@@ -1,0 +1,36 @@
+MACHINE
+
+; The [T, N] means (and will always mean) - the value will collapse 
+; into one of the types as listed in the tagged union
+; Compiler resolves which type it collapses to according to our implementation
+; Do not confuse it as of type [T, N] where one of the type is live
+
+; A function that might collapse to one of the listed types (some conceptual type "ErrorType")
+FN divide(a: i32, b: i32): [i32, ErrorType]
+    IF b == 0
+        RETURN ErrorType
+    ENDIF
+
+    RETURN a / b
+ENDFN
+
+FN main(): i32
+
+    VAR x: i32 = Conin.read("Enter num1: ")
+    VAR y: i32 = Conin.read("Enter num2: ")
+
+    
+    MATCH divide(x, y)         ; divide(x, y) will give collapse into either the result or an ErrorType
+        CASE v: i32            ; trap the result as v of type i32
+            Conout.writeln("The division yields: {}", v)    
+        CASE _
+            Conerr.writeln("Zero division error: cannot divide by zero")
+    ENDMATCH
+
+ENDFN
+
+
+; The idea is that we already have one-value-collapsing tagged unions built in
+; WE use those primitives to handle errors - No need to give Errors their own types 
+; These collapsing tagged unions can also be used to return sentinel values
+; Monadic Unions

@@ -1,0 +1,74 @@
+; CORE.alloc — Allocator Trait (Contract Only)
+; No implementation in CORE, just defines the trait
+; Uses tagged unions directly: [T, Error] for fallible, [T, void] for optional
+
+MODULE alloc
+    USE CORE.err
+    USE CORE.slice
+
+    ; --- Allocator Trait (Contract Only) ---
+
+    TRAIT Allocator
+        ; Allocate `size` bytes with `align` alignment
+        FN alloc(self: ptr[void], size: u64, align: u64): [ptr[u8], Error]
+        
+        ; Deallocate previously allocated block
+        FN dealloc(self: ptr[void], ptr: ptr[u8], size: u64, align: u64): void
+        
+        ; Reallocate (optional default)
+        FN realloc(self: ptr[void], ptr: ptr[u8], old_size: u64, new_size: u64, align: u64): [ptr[u8], Error]
+            VAR new_ptr = self.alloc(new_size, align)
+            MATCH new_ptr
+                CASE p: ptr[u8] => 
+                    memmove(p, ptr, min(old_size, new_size))
+                    self.dealloc(ptr, old_size, align)
+                    RETURN p
+                CASE _ => RETURN _  ; propagate error
+            ENDMATCH
+        ENDFN
+    ENDTRAIT
+
+    ; --- Global Allocator Registry ---
+
+    VAR _global_allocator: [ptr[Allocator], void] = _  ; None = _
+
+    FN set_global_allocator(alloc: ptr[Allocator]): void
+        _global_allocator = alloc
+    ENDFN
+
+    FN get_global_allocator(): ptr[Allocator]
+        MATCH _global_allocator
+            CASE a: ptr[Allocator] => a
+            CASE _ => panic("no global allocator set")
+        ENDMATCH
+    ENDFN
+
+    ; --- Convenience Functions ---
+
+    FN alloc(size: u64, align: u64): [ptr[u8], Error]
+        get_global_allocator().alloc(size, align)
+    ENDFN
+
+    FN dealloc(ptr: ptr[u8], size: u64, align: u64): void
+        get_global_allocator().dealloc(ptr, size, align)
+    ENDFN
+
+    FN realloc(ptr: ptr[u8], old_size: u64, new_size: u64, align: u64): [ptr[u8], Error]
+        get_global_allocator().realloc(ptr, old_size, new_size, align)
+    ENDFN
+
+    ; --- Box / Own Helpers ---
+
+    FN box_new[T](val: T): [own[T], Error]
+        VAR size = sizeof(T)
+        VAR align = alignof(T)
+        VAR ptr = alloc(size, align)
+        MATCH ptr
+            CASE p: ptr[u8] => 
+                memcpy(p, &val, size)
+                RETURN own::from_raw(p)
+            CASE _ => RETURN _  ; propagate error
+        ENDMATCH
+    ENDFN
+
+ENDMODULE

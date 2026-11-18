@@ -1,0 +1,13 @@
+; CORE - Freestanding standard library
+; Available in both MACHINE and NO_MACHINE modes
+
+MODULE core
+    USE CORE.mem
+    USE CORE.slice
+    USE CORE.io
+    USE CORE.fmt
+    USE CORE.err
+    USE CORE.panic
+    USE CORE.alloc
+    ; USE CORE.atomic  ; optional
+ENDMODULE

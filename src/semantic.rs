@@ -121,6 +121,22 @@ impl Ty {
         }
     }
 
+    pub fn types_ufcs_compatible(receiver: &Ty, param: &Ty) -> bool {
+        match (receiver, param) {
+            (Ty::Error, _) | (_, Ty::Error) => true,
+            _ if receiver.types_eq(param) => true,
+            (Ty::Own(inner), Ty::Ptr(p)) | (Ty::Ptr(inner), Ty::Ptr(p))
+                if inner.types_eq(p) => true,
+            (Ty::Own(inner), Ty::Own(p)) if inner.types_eq(p) => true,
+            (Ty::Named(s), Ty::Ptr(inner)) | (Ty::Ptr(inner), Ty::Named(s))
+                if (s == "string" || s == "str") && (inner.types_eq(&Ty::U8) || inner.types_eq(&Ty::I8)) =>
+            {
+                true
+            }
+            _ => false,
+        }
+    }
+
     pub fn types_compatible_for_const(&self, other: &Ty) -> bool {
         if self.types_eq(other) {
             return true;
@@ -222,6 +238,34 @@ pub struct EnumDef {
     pub variants: Vec<(String, Option<Ty>)>,
 }
 
+/// Trait definition with method signatures.
+#[derive(Debug, Clone)]
+struct TraitDef {
+    name: String,
+    generic_params: Vec<String>,
+    methods: Vec<TraitMethodSig>,
+    supertraits: Vec<String>,
+}
+
+/// Trait method signature.
+#[derive(Debug, Clone)]
+struct TraitMethodSig {
+    name: String,
+    generic_params: Vec<String>,
+    params: Vec<(String, Ty, bool)>, // name, type, is_owner_param
+    return_ty: Ty,
+    has_default: bool,
+}
+
+/// Impl definition with concrete method signatures.
+#[derive(Debug, Clone)]
+struct ImplDef {
+    trait_name: String,
+    for_ty: Ty,
+    generic_params: Vec<String>,
+    methods: HashMap<String, FnSignature>,
+}
+
 /// Semantic analyzer: name resolution, type checking, ownership checking.
 pub struct SemanticAnalyzer {
     errors: Vec<String>,
@@ -229,6 +273,8 @@ pub struct SemanticAnalyzer {
     functions: HashMap<String, FnSignature>,
     structs: HashMap<String, StructDef>,
     enums: HashMap<String, EnumDef>,
+    traits: HashMap<String, TraitDef>,
+    impls: Vec<ImplDef>,
     current_fn_return: Ty,
     machine_mode: Option<bool>, // None = unset, Some(true) = MACHINE, Some(false) = NO_MACHINE
     module_loader: ModuleLoader,
@@ -237,17 +283,35 @@ pub struct SemanticAnalyzer {
 
 impl SemanticAnalyzer {
     pub fn new() -> Self {
-        Self {
+        let mut this = Self {
             errors: Vec::new(),
             scopes: vec![Scope::new()],
             functions: HashMap::new(),
             structs: HashMap::new(),
             enums: HashMap::new(),
+            traits: HashMap::new(),
+            impls: Vec::new(),
             current_fn_return: Ty::Void,
             machine_mode: None,
             module_loader: ModuleLoader::new(),
             imported_modules: HashMap::new(),
-        }
+        };
+        
+        // Built-in libc functions (always available)
+        this.functions.insert("puts".into(), FnSignature {
+            _name: "puts".into(),
+            generic_params: Vec::new(),
+            params: vec![("s".into(), Ty::Ptr(Box::new(Ty::U8)), false)],
+            return_ty: Ty::I32,
+        });
+        this.functions.insert("putchar".into(), FnSignature {
+            _name: "putchar".into(),
+            generic_params: Vec::new(),
+            params: vec![("c".into(), Ty::I32, false)],
+            return_ty: Ty::I32,
+        });
+        
+        this
     }
 
     pub fn analyze(mut self, program: &Program) -> SemanticResult {
@@ -340,7 +404,7 @@ impl SemanticAnalyzer {
                         // Register namespace alias: short_name -> full_path
                         self.imported_modules.insert(short_name.clone(), full_path.clone());
                         
-                        match self.module_loader.load_machine_module(&imp.path) {
+                        match self.module_loader.load_module(&imp.path) {
                             Ok(module) => {
                                 // Collect declarations from the loaded module
                                 self.collect_module_declarations(&module, &imp.path);
@@ -415,6 +479,50 @@ impl SemanticAnalyzer {
                 Item::AsmBlock(_) => {
                     // ASM blocks don't need declaration collection
                 }
+                Item::TraitDecl(t) => {
+                    let method_sigs: Vec<TraitMethodSig> = t.methods.iter().map(|m| {
+                        let params: Vec<(String, Ty, bool)> = m.params.iter().map(|p| {
+                            (p.name.clone(), self.ast_type_to_ty(&p.ty), p.is_own)
+                        }).collect();
+                        let return_ty = self.ast_type_to_ty(&m.return_type);
+                        TraitMethodSig {
+                            name: m.name.clone(),
+                            generic_params: m.generic_params.iter().map(|p| p.name.clone()).collect(),
+                            params,
+                            return_ty,
+                            has_default: m.has_body,
+                        }
+                    }).collect();
+                    
+                    self.traits.insert(t.name.clone(), TraitDef {
+                        name: t.name.clone(),
+                        generic_params: t.generic_params.iter().map(|p| p.name.clone()).collect(),
+                        methods: method_sigs,
+                        supertraits: t.supertraits.clone(),
+                    });
+                }
+                Item::ImplDecl(i) => {
+                    let mut method_map = HashMap::new();
+                    for m in &i.methods {
+                        let params: Vec<(String, Ty, bool)> = m.params.iter().map(|p| {
+                            (p.name.clone(), self.ast_type_to_ty(&p.ty), p.is_own)
+                        }).collect();
+                        let return_ty = self.ast_type_to_ty(&m.return_type);
+                        let generic_params: Vec<String> = m.generic_params.iter().map(|p| p.name.clone()).collect();
+                        method_map.insert(m.name.clone(), FnSignature {
+                            _name: m.name.clone(),
+                            generic_params,
+                            params,
+                            return_ty,
+                        });
+                    }
+                    self.impls.push(ImplDef {
+                        trait_name: i.trait_name.clone(),
+                        for_ty: self.ast_type_to_ty(&i.for_type),
+                        generic_params: i.generic_params.iter().map(|p| p.name.clone()).collect(),
+                        methods: method_map,
+                    });
+                }
             }
         }
     }
@@ -488,8 +596,8 @@ impl SemanticAnalyzer {
                 }
                 Item::ImportDecl(imp) => {
                     // Handle nested imports
-                    if imp.path.len() >= 2 && imp.path[0] == "MACHINE" {
-                        if let Ok(sub_module) = self.module_loader.load_machine_module(&imp.path) {
+                    if imp.path.len() >= 2 && (imp.path[0] == "MACHINE" || imp.path[0] == "CORE") {
+                        if let Ok(sub_module) = self.module_loader.load_module(&imp.path) {
                             self.collect_module_declarations(&sub_module, &imp.path);
                         }
                     }
@@ -508,6 +616,59 @@ impl SemanticAnalyzer {
                     }
                     // Store as a global constant (for now, just track the type)
                     // Could add a constants map if needed
+                }
+                Item::TraitDecl(t) => {
+                    let qualified_name = format!("{}.{}", prefix, t.name);
+                    let method_sigs: Vec<TraitMethodSig> = t.methods.iter().map(|m| {
+                        let params: Vec<(String, Ty, bool)> = m.params.iter().map(|p| {
+                            (p.name.clone(), self.ast_type_to_ty(&p.ty), p.is_own)
+                        }).collect();
+                        let return_ty = self.ast_type_to_ty(&m.return_type);
+                        TraitMethodSig {
+                            name: m.name.clone(),
+                            generic_params: m.generic_params.iter().map(|p| p.name.clone()).collect(),
+                            params,
+                            return_ty,
+                            has_default: m.has_body,
+                        }
+                    }).collect();
+                    
+                    self.traits.insert(qualified_name, TraitDef {
+                        name: t.name.clone(),
+                        generic_params: t.generic_params.iter().map(|p| p.name.clone()).collect(),
+                        methods: t.methods.iter().map(|m| TraitMethodSig {
+                            name: m.name.clone(),
+                            generic_params: m.generic_params.iter().map(|p| p.name.clone()).collect(),
+                            params: m.params.iter().map(|p| {
+                                (p.name.clone(), self.ast_type_to_ty(&p.ty), p.is_own)
+                            }).collect(),
+                            return_ty: self.ast_type_to_ty(&m.return_type),
+                            has_default: m.has_body,
+                        }).collect(),
+                        supertraits: t.supertraits.clone(),
+                    });
+                }
+                Item::ImplDecl(i) => {
+                    let mut method_map = HashMap::new();
+                    for m in &i.methods {
+                        let params: Vec<(String, Ty, bool)> = m.params.iter().map(|p| {
+                            (p.name.clone(), self.ast_type_to_ty(&p.ty), p.is_own)
+                        }).collect();
+                        let return_ty = self.ast_type_to_ty(&m.return_type);
+                        let generic_params: Vec<String> = m.generic_params.iter().map(|p| p.name.clone()).collect();
+                        method_map.insert(m.name.clone(), FnSignature {
+                            _name: m.name.clone(),
+                            generic_params,
+                            params,
+                            return_ty,
+                        });
+                    }
+                    self.impls.push(ImplDef {
+                        trait_name: i.trait_name.clone(),
+                        for_ty: self.ast_type_to_ty(&i.for_type),
+                        generic_params: i.generic_params.iter().map(|p| p.name.clone()).collect(),
+                        methods: method_map,
+                    });
                 }
                 _ => {}
             }
@@ -829,6 +990,19 @@ impl SemanticAnalyzer {
             params: vec![("code".into(), Ty::I32, false)],
             return_ty: Ty::Void,
         });
+        // puts/putchar for NO_MACHINE mode
+        self.functions.insert("puts".into(), FnSignature {
+            _name: "puts".into(),
+            generic_params: Vec::new(),
+            params: vec![("s".into(), Ty::Ptr(Box::new(Ty::U8)), false)],
+            return_ty: Ty::I32,
+        });
+        self.functions.insert("putchar".into(), FnSignature {
+            _name: "putchar".into(),
+            generic_params: Vec::new(),
+            params: vec![("c".into(), Ty::I32, false)],
+            return_ty: Ty::I32,
+        });
     }
 
     fn validate_machine_mode(&mut self, _program: &Program) {
@@ -903,6 +1077,8 @@ impl SemanticAnalyzer {
                     }
                 }
             }
+            Item::TraitDecl(_) => {}
+            Item::ImplDecl(_) => {}
         }
     }
 
@@ -1719,7 +1895,14 @@ impl SemanticAnalyzer {
                             return self.call_function(&qualified_name, args);
                         }
                         
-                        // Not a qualified function or enum variant constructor
+                        // Try UFCS: obj.method(args) -> method(obj, args)
+                        if let Expr::Member { object, member } = callee.as_ref() {
+                            if let Some(ty) = self.try_call_ufcs(object, member, args) {
+                                return ty;
+                            }
+                        }
+                        
+                        // Not a qualified function, enum variant constructor, or UFCS
                         self.errors.push("invalid qualified function call".into());
                         return Ty::Error;
                     }
@@ -1895,6 +2078,23 @@ impl SemanticAnalyzer {
             Type::Generic(name) => {
                 Ty::Generic(name.clone())
             }
+            Type::TraitObject(name) => {
+                Ty::Named(format!("dyn {}", name))
+            }
+            Type::GenericInst(base, args) => {
+                // For now, treat generic inst as the base type with concrete args
+                // Full generic substitution would require more work
+                let base_ty = self.ast_type_to_ty(base);
+                if let Ty::Named(name) = base_ty {
+                    if args.len() == 2 && name == "Result" {
+                        // Special case for Result[T, E]
+                        let ok_ty = self.ast_type_to_ty(&args[0]);
+                        let err_ty = self.ast_type_to_ty(&args[1]);
+                        return Ty::Union(vec![Ty::Named("Ok".into()), Ty::Named("Err".into())]);
+                    }
+                }
+                Ty::Named("GenericInst".into())
+            }
         }
     }
 
@@ -2069,12 +2269,8 @@ impl SemanticAnalyzer {
     fn extract_qualified_name(&self, expr: &Expr) -> Option<String> {
         match expr {
             Expr::Ident(name) => {
-                // Check if this identifier is an imported module alias
-                if let Some(full_path) = self.imported_modules.get(name) {
-                    Some(full_path.clone())
-                } else {
-                    Some(name.clone())
-                }
+                // Only return qualified name if this identifier is an imported module alias
+                self.imported_modules.get(name).cloned()
             }
             Expr::Member { object, member } => {
                 if let Some(prefix) = self.extract_qualified_name(object) {
@@ -2084,6 +2280,48 @@ impl SemanticAnalyzer {
                 }
             }
             _ => None,
+        }
+    }
+
+    fn try_call_ufcs(&mut self, receiver: &Expr, method_name: &str, args: &[Expr]) -> Option<Ty> {
+        let receiver_ty = self.type_of_expr(receiver);
+        if let Some(sig) = self.functions.get(method_name).cloned() {
+            if sig.params.is_empty() {
+                return None;
+            }
+            let (first_param_name, first_param_ty, first_param_is_own) = &sig.params[0];
+            if !Ty::types_ufcs_compatible(&receiver_ty, first_param_ty) {
+                return None;
+            }
+            let total_args = 1 + args.len();
+            if total_args != sig.params.len() {
+                return None;
+            }
+            let mut all_args = Vec::with_capacity(total_args);
+            all_args.push(receiver.clone());
+            all_args.extend_from_slice(args);
+            let mut arg_iter = all_args.iter();
+            for (param_name, param_ty, is_own) in sig.params.iter() {
+                let arg = arg_iter.next().unwrap();
+                let arg_ty = self.type_of_expr(arg);
+                if !arg_ty.types_eq(param_ty) && arg_ty != Ty::Error {
+                    self.errors.push(format!(
+                        "argument '{}' type mismatch: expected {}, got {}",
+                        param_name,
+                        param_ty.display(),
+                        arg_ty.display()
+                    ));
+                    return Some(Ty::Error);
+                }
+                if *is_own
+                    && let Expr::Ident(ref name) = *arg
+                {
+                    self.mark_move_from(name, arg);
+                }
+            }
+            Some(sig.return_ty.clone())
+        } else {
+            None
         }
     }
 

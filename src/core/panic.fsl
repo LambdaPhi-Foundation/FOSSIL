@@ -1,0 +1,62 @@
+; CORE.panic — Panic/Abort Path
+; Platform-specific abort, direct stderr write
+
+MODULE panic
+    USE CORE.io
+    USE CORE.fmt
+    USE CORE.err
+
+    ; Platform-specific abort
+    EXTERN FN abort() ENDFN
+
+    ; Trap instruction (bare metal)
+    EXTERN FN trap() ENDFN
+
+    ; --- Panic Entry Point ---
+
+    FN panic(msg: Str): void
+        ; Write directly to stderr (unbuffered, no locks)
+        VAR w = stderr()
+        MATCH w
+            CASE w: ptr[Write] => 
+                w.writeln("PANIC: {}", msg)
+                w.flush()
+            CASE _ => 
+                ; Fallback: direct platform write
+                platform_write_stderr(msg)
+        ENDMATCH
+        
+        ; Platform-specific termination
+        ; Bare metal: trap() → ud2/bkpt
+        ; Hosted: abort() → ExitProcess / exit
+        platform_abort()
+        UNREACHABLE
+    ENDFN
+
+    ; Platform-specific primitives
+    EXTERN FN platform_write_stderr(msg: Str) ENDFN
+    EXTERN FN platform_abort() ENDFN
+
+    ; --- Assert Macros ---
+
+    MACRO assert(cond: bool, msg: str)
+        IF !cond
+            panic(msg)
+        ENDIF
+    ENDMACRO
+
+    MACRO assert_eq[T](a: T, b: T, msg: str)
+        IF a != b
+            panic("assertion failed: {} != {}: {}", a, b, msg)
+        ENDIF
+    ENDMACRO
+
+    MACRO debug_assert(cond: bool, msg: str)
+        ; Only in debug builds (compiler strips in release)
+    ENDMACRO
+
+    MACRO unreachable(msg: str)
+        panic("unreachable: " + msg)
+    ENDMACRO
+
+ENDMODULE

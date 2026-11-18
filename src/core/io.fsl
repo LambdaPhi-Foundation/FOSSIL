@@ -1,0 +1,109 @@
+; CORE.io — Write trait & Sink
+; Uses tagged unions directly: [u64, Error] for fallible, [T, void] for optional
+
+MODULE io
+    USE CORE.slice
+    USE CORE.err
+    USE CORE.fmt
+
+    ; --- Write Trait ---
+
+    TRAIT Write
+        ; Required: single write call
+        FN write(self: ptr[void], buf: slice[u8]): [u64, Error]
+        
+        ; Optional: default implementations
+        FN write_all(self: ptr[void], buf: slice[u8]): [u64, Error]
+            VAR written: u64 = 0
+            WHILE written < buf.len
+                VAR res = self.write(buf.slice(written, buf.len))
+                MATCH res
+                    CASE n: u64 => written = written + n
+                    CASE _ => RETURN _  ; propagate error
+                ENDMATCH
+            ENDWHILE
+            RETURN written
+        ENDFN
+
+        FN write_str(self: ptr[void], s: Str): [u64, Error]
+            RETURN self.write(s.as_slice())
+        ENDFN
+
+        FN flush(self: ptr[void]): [void, Error]
+            RETURN _
+        ENDFN
+    ENDTRAIT
+
+    ; --- Null Writer (discards output) ---
+
+    STRUCT NullWriter
+    ENDSTRUCT
+
+    IMPL Write FOR NullWriter
+        FN write(self: ptr[void], buf: slice[u8]): [u64, Error]
+            RETURN buf.len
+        ENDFN
+    ENDIMPL
+
+    ; --- Standard Writers (set by platform) ---
+
+    VAR _stdout: [ptr[Write], void] = _
+    VAR _stderr: [ptr[Write], void] = _
+
+    FN set_stdout(w: ptr[Write]): void
+        _stdout = w
+    ENDFN
+
+    FN set_stderr(w: ptr[Write]): void
+        _stderr = w
+    ENDFN
+
+    FN stdout(): [ptr[Write], Error]
+        MATCH _stdout
+            CASE w: ptr[Write] => w
+            CASE _ => error_new(ErrorKind.NotConnected, "stdout not set")
+        ENDMATCH
+    ENDFN
+
+    FN stderr(): [ptr[Write], Error]
+        MATCH _stderr
+            CASE w: ptr[Write] => w
+            CASE _ => error_new(ErrorKind.NotConnected, "stderr not set")
+        ENDMATCH
+    ENDFN
+
+    ; --- Convenience Macros ---
+
+    MACRO print(fmt: str, args: ...)
+        VAR w = stdout()
+        MATCH w
+            CASE w: ptr[Write] => format(w, fmt, args...)
+            CASE _ => _
+        ENDMATCH
+    ENDMACRO
+
+    MACRO println(fmt: str, args: ...)
+        VAR w = stdout()
+        MATCH w
+            CASE w: ptr[Write] => writeln(w, fmt, args...)
+            CASE _ => _
+        ENDMATCH
+    ENDMACRO
+
+    MACRO eprint(fmt: str, args: ...)
+        VAR w = stderr()
+        MATCH w
+            CASE w: ptr[Write] => format(w, fmt, args...)
+            CASE _ => _
+        ENDMATCH
+    ENDMACRO
+
+    MACRO eprintln(fmt: str, args: ...)
+        VAR w = stderr()
+        MATCH w
+            CASE w: ptr[Write] => writeln(w, fmt, args...)
+            CASE _ => _
+        ENDMATCH
+    ENDMACRO
+
+ENDMODULE
